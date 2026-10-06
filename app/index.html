@@ -1,0 +1,743 @@
+<title>Rugosímetro Virtual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: banco de trabajo en dos columnas — entradas (herramienta + corte) a la izquierda,
+   lectura del "rugosímetro" a la derecha. Cabeceras azul catálogo como la tabla de cotas. */
+:root {
+  --bg: #eef1f5;
+  --panel: #ffffff;
+  --ink: #15233a;
+  --muted: #5a6a7f;
+  --line: #d3dae4;
+  --field: #f7f9fb;
+  --head-bg: #123f73;
+  --head-ink: #ffffff;
+  --accent: #123f73;
+  --pared: #1d5fa8;
+  --suelo: #c4580e;
+  --target: #6b7a8f;
+  --good: #1d7a4b;
+  --good-bg: #e3f3ea;
+  --warn: #9a5c00;
+  --warn-bg: #fdf1dc;
+  --bad: #b3261e;
+  --bad-bg: #fbe7e5;
+  --metal: #c9d1dc;
+  --metal-dark: #8e9bad;
+  --font-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --font-body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d141e; --panel: #151f2c; --ink: #e4eaf2; --muted: #93a2b6; --line: #2a3747;
+    --field: #101924; --head-bg: #1c3b63; --head-ink: #eef4fb; --accent: #7fb0ec;
+    --pared: #7fb0ec; --suelo: #f0954f; --target: #93a2b6;
+    --good: #6fd29b; --good-bg: #13301f; --warn: #f2bd5b; --warn-bg: #33270f; --bad: #ff8a80; --bad-bg: #3a1714;
+    --metal: #4a5869; --metal-dark: #7b8ba0;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d141e; --panel: #151f2c; --ink: #e4eaf2; --muted: #93a2b6; --line: #2a3747;
+  --field: #101924; --head-bg: #1c3b63; --head-ink: #eef4fb; --accent: #7fb0ec;
+  --pared: #7fb0ec; --suelo: #f0954f; --target: #93a2b6;
+  --good: #6fd29b; --good-bg: #13301f; --warn: #f2bd5b; --warn-bg: #33270f; --bad: #ff8a80; --bad-bg: #3a1714;
+  --metal: #4a5869; --metal-dark: #7b8ba0;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.45 var(--font-body);
+  padding-inline: 16px; padding-block: 0 40px;
+}
+h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; }
+.wrap { max-width: 1320px; margin: 0 auto; }
+
+header.top {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px;
+  padding-block: 22px 16px; border-bottom: 2px solid var(--head-bg); margin-bottom: 18px;
+}
+header.top h1 { font-size: 30px; font-weight: 700; letter-spacing: .01em; font-style: italic; color: var(--accent); }
+header.top p { margin: 0; color: var(--muted); }
+
+.grid { display: grid; grid-template-columns: minmax(0, 470px) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 960px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; min-width: 0; }
+.card > h2 {
+  background: var(--head-bg); color: var(--head-ink); font-size: 17px; font-weight: 600;
+  letter-spacing: .04em; text-transform: uppercase; padding: 8px 14px;
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+}
+.card > h2 small { font-family: var(--font-body); text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 13px; opacity: .85; }
+.body { padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+
+/* tabla de cotas tipo catálogo */
+.cotas { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.cotas th { background: var(--head-bg); color: var(--head-ink); font: 600 14px var(--font-display); letter-spacing: .03em; padding: 6px 2px; border: 1px solid var(--line); }
+.cotas td { border: 1px solid var(--line); padding: 0; }
+.cotas input { width: 100%; border: 0; background: var(--field); text-align: center; padding: 9px 2px; font: 500 14px var(--font-mono); color: var(--ink); }
+.cotas input:disabled { color: var(--muted); }
+.cotas input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (max-width: 520px) {
+  .cotas, .cotas tbody, .cotas tr { display: block; }
+  .cotas thead { display: none; }
+  .cotas tr { display: grid; grid-template-columns: repeat(4, 1fr); }
+  .cotas td { position: relative; padding-top: 18px; background: var(--field); }
+  .cotas td::before { content: attr(data-l); position: absolute; top: 2px; left: 0; right: 0; text-align: center; font: 600 12px var(--font-display); color: var(--muted); }
+}
+
+.aristas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.arista {
+  border: 1.5px solid var(--line); background: var(--field); border-radius: var(--radius); cursor: pointer;
+  padding: 6px 4px 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--ink);
+  font: 600 13px var(--font-display); letter-spacing: .03em;
+}
+.arista svg { width: 100%; max-width: 92px; height: auto; }
+.arista[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--panel); }
+.arista:focus-visible, button:focus-visible, select:focus-visible, .seg label:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px 12px; }
+.f { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.f label { font-size: 13px; color: var(--muted); }
+.f label b { color: var(--ink); font-weight: 600; }
+.f .in { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 4px; background: var(--field); }
+.f .in:focus-within { outline: 2px solid var(--accent); outline-offset: -1px; }
+.f input, .f select { border: 0; background: transparent; color: var(--ink); font: 500 14px var(--font-mono); padding: 7px 8px; width: 100%; min-width: 0; }
+.f select { font-family: var(--font-body); }
+.f input:focus, .f select:focus { outline: none; }
+.f .u { font: 12px var(--font-mono); color: var(--muted); padding: 8px 8px 0 0; white-space: nowrap; }
+.f.wide { grid-column: 1 / -1; }
+
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.seg label { padding: 7px 12px; cursor: pointer; font-size: 14px; background: var(--field); }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label:has(input:checked) { background: var(--head-bg); color: var(--head-ink); }
+
+details.adv > summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 14px; }
+details.adv[open] > summary { margin-bottom: 10px; }
+
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button.btn {
+  font: 600 14px var(--font-body); border-radius: 4px; padding: 7px 12px; cursor: pointer;
+  border: 1px solid var(--accent); background: transparent; color: var(--accent);
+}
+button.btn.primary { background: var(--head-bg); border-color: var(--head-bg); color: var(--head-ink); }
+button.btn.small { padding: 4px 9px; font-size: 13px; }
+button.btn:hover { filter: brightness(1.08); }
+
+.sketch { width: 100%; height: auto; display: block; }
+.sketch text { font: 600 22px var(--font-display); fill: var(--ink); }
+
+/* resultados */
+.lect { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 560px) { .lect { grid-template-columns: minmax(0, 1fr); } }
+.dial { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; border-top: 4px solid var(--c); }
+.dial .t { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.dial h3 { font-size: 16px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+.dial .big { font: 500 40px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.dial .big small { font-size: 15px; color: var(--muted); margin-left: 4px; }
+.dial dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 0; }
+.dial dt { font-size: 12px; color: var(--muted); }
+.dial dd { margin: 0; font: 500 14px var(--font-mono); font-variant-numeric: tabular-nums; }
+.dial .note { font-size: 13px; color: var(--muted); }
+.pill { font: 600 13px var(--font-mono); padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+.pill.ok { background: var(--good-bg); color: var(--good); }
+.pill.ko { background: var(--bad-bg); color: var(--bad); }
+.pill.na { background: var(--field); color: var(--muted); }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.kpi { background: var(--panel); padding: 8px 10px; }
+.kpi span { display: block; font-size: 12px; color: var(--muted); }
+.kpi b { font: 500 16px var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.avisos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.avisos li { padding: 7px 10px; border-radius: 4px; font-size: 14px; border-left: 4px solid; }
+.avisos .error { background: var(--bad-bg); border-color: var(--bad); }
+.avisos .aviso { background: var(--warn-bg); border-color: var(--warn); }
+.avisos .info { background: var(--field); border-color: var(--target); }
+
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tabs button { font: 500 14px var(--font-body); border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 5px 10px; border-radius: 4px; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--head-bg); color: var(--head-ink); border-color: var(--head-bg); }
+.chart { width: 100%; height: auto; display: block; }
+.chart text { font: 15px var(--font-mono); fill: var(--muted); }
+.chart .lbl { font: 600 17px var(--font-display); fill: var(--ink); }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 5px; background: var(--c); }
+.cap { font-size: 13px; color: var(--muted); margin: 0; }
+
+.tbl-wrap { overflow-x: auto; }
+table.cal { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 14px; }
+table.cal th { text-align: left; font: 600 13px var(--font-display); color: var(--muted); letter-spacing: .03em; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+table.cal td { padding: 3px 4px; border-bottom: 1px solid var(--line); }
+table.cal input, table.cal select { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 3px; background: var(--field); color: var(--ink); font: 13px var(--font-mono); padding: 5px; }
+.tag { font: 600 11px var(--font-body); text-transform: uppercase; letter-spacing: .06em; color: var(--warn); }
+textarea.json { width: 100%; min-height: 90px; font: 12px var(--font-mono); background: var(--field); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 8px; }
+.method { font-size: 14px; color: var(--ink); max-width: 75ch; }
+.method li { margin-bottom: 4px; }
+.method code { font: 13px var(--font-mono); }
+@media (prefers-reduced-motion: no-preference) { .dial .big { transition: color .2s; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Rugosímetro Virtual</h1>
+    <p>Predicción de Ra, Rz y Rt en fresado a partir de la geometría de la fresa y las condiciones de corte.</p>
+  </header>
+
+  <div class="grid">
+    <!-- ======================= ENTRADAS ======================= -->
+    <div class="col">
+      <section class="card">
+        <h2>Cotas de la herramienta <small id="toolName">Ejemplo</small></h2>
+        <div class="body">
+          <svg class="sketch" id="sketch" viewBox="0 0 760 210" role="img" aria-label="Croquis de la fresa con sus cotas"></svg>
+
+          <table class="cotas">
+            <thead><tr><th>Nº Filos</th><th>D1</th><th>D2</th><th>D3</th><th>L1</th><th>L2</th><th>L3</th><th id="chrHead">Ch/R</th></tr></thead>
+            <tbody><tr>
+              <td data-l="Nº Filos"><input id="t_z" inputmode="numeric" value="4" aria-label="Número de filos"></td>
+              <td data-l="D1"><input id="t_D1" inputmode="decimal" value="10" aria-label="D1 diámetro de corte (mm)"></td>
+              <td data-l="D2"><input id="t_D2" inputmode="decimal" value="10" aria-label="D2 diámetro del mango (mm)"></td>
+              <td data-l="D3"><input id="t_D3" inputmode="decimal" value="9,5" aria-label="D3 diámetro del cuello (mm)"></td>
+              <td data-l="L1"><input id="t_L1" inputmode="decimal" value="72" aria-label="L1 longitud total (mm)"></td>
+              <td data-l="L2"><input id="t_L2" inputmode="decimal" value="22" aria-label="L2 longitud de corte (mm)"></td>
+              <td data-l="L3"><input id="t_L3" inputmode="decimal" value="30" aria-label="L3 longitud útil / cuello (mm)"></td>
+              <td data-l="Ch/R"><input id="t_chR" inputmode="decimal" value="0" aria-label="Chaflán o radio de punta (mm)"></td>
+            </tr></tbody>
+          </table>
+          <p class="cap">Cotas en mm. D3 = D1 si la fresa no tiene cuello rebajado.</p>
+
+          <div class="aristas" role="group" aria-label="Tipo de punta">
+            <button type="button" class="arista" data-arista="AV" aria-pressed="true">
+              <svg viewBox="0 0 90 50" aria-hidden="true"><path d="M8 42 L82 42" stroke="var(--metal-dark)" stroke-width="1.5" fill="none"/><path d="M14 22 Q50 8 66 10 L66 42" stroke="var(--ink)" stroke-width="2.4" fill="none"/></svg>
+              AV · arista viva
+            </button>
+            <button type="button" class="arista" data-arista="CH" aria-pressed="false">
+              <svg viewBox="0 0 90 50" aria-hidden="true"><path d="M8 42 L82 42" stroke="var(--metal-dark)" stroke-width="1.5" fill="none"/><path d="M14 22 Q48 8 60 10 L66 18 L66 42" stroke="var(--ink)" stroke-width="2.4" fill="none"/></svg>
+              Ch · chaflán
+            </button>
+            <button type="button" class="arista" data-arista="R" aria-pressed="false">
+              <svg viewBox="0 0 90 50" aria-hidden="true"><path d="M8 42 L82 42" stroke="var(--metal-dark)" stroke-width="1.5" fill="none"/><path d="M14 24 Q40 12 56 12 Q66 12 66 24 L66 42" stroke="var(--ink)" stroke-width="2.4" fill="none"/></svg>
+              R · radio punta
+            </button>
+            <button type="button" class="arista" data-arista="ESF" aria-pressed="false">
+              <svg viewBox="0 0 90 50" aria-hidden="true"><path d="M8 42 L82 42" stroke="var(--metal-dark)" stroke-width="1.5" fill="none"/><path d="M14 30 Q22 8 44 8 Q70 8 74 42" stroke="var(--ink)" stroke-width="2.4" fill="none"/></svg>
+              R · esférica
+            </button>
+          </div>
+
+          <details class="adv">
+            <summary>Geometría de filo y estado de la herramienta</summary>
+            <div class="fields">
+              <div class="f"><label for="t_helice">Ángulo de hélice</label><div class="in"><input id="t_helice" inputmode="decimal" value="35"><span class="u">°</span></div></div>
+              <div class="f"><label for="t_dish">Ángulo de dish (filo frontal)</label><div class="in"><input id="t_dish" inputmode="decimal" value="1,5"><span class="u">°</span></div></div>
+              <div class="f"><label for="t_runout">Excentricidad radial</label><div class="in"><input id="t_runout" inputmode="decimal" value="5"><span class="u">µm</span></div></div>
+              <div class="f"><label for="t_runoutAxial">Excentricidad axial</label><div class="in"><input id="t_runoutAxial" inputmode="decimal" value="2"><span class="u">µm</span></div></div>
+              <div class="f"><label for="t_radioFilo">Radio de filo rβ</label><div class="in"><input id="t_radioFilo" inputmode="decimal" value="8"><span class="u">µm</span></div></div>
+              <div class="f"><label for="t_material">Material</label><div class="in"><select id="t_material"><option value="MD">Metal duro</option><option value="HSS">Acero rápido (HSS)</option></select></div></div>
+            </div>
+          </details>
+
+          <div class="row">
+            <div class="f" style="flex:1 1 180px"><label for="lib">Biblioteca de herramientas</label><div class="in"><select id="lib"></select></div></div>
+            <div class="row" style="align-self:end">
+              <button type="button" class="btn small" id="btnLoad">Cargar</button>
+              <button type="button" class="btn small" id="btnSave">Guardar actual</button>
+              <button type="button" class="btn small" id="btnDel">Borrar</button>
+            </div>
+          </div>
+          <details class="adv">
+            <summary>Exportar / importar herramientas (JSON)</summary>
+            <div class="body" style="padding:0">
+              <textarea class="json" id="json" spellcheck="false" aria-label="Herramientas en formato JSON"></textarea>
+              <div class="row">
+                <button type="button" class="btn small" id="btnExport">Mostrar biblioteca</button>
+                <button type="button" class="btn small" id="btnCopy">Copiar</button>
+                <button type="button" class="btn small" id="btnImport">Importar texto</button>
+                <label class="btn small" style="display:inline-flex;align-items:center;cursor:pointer;border:1px solid var(--accent);color:var(--accent);border-radius:4px;font-weight:600;font-size:13px;padding:4px 9px">Abrir archivo…<input type="file" id="file" accept=".json,application/json" hidden></label>
+              </div>
+              <p class="cap" id="jsonMsg"></p>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Condiciones de corte</h2>
+        <div class="body">
+          <div class="fields">
+            <div class="f wide"><label for="c_material">Material de la pieza</label><div class="in"><select id="c_material"></select></div></div>
+            <div class="f"><label for="c_vc"><b>Vc</b> velocidad de corte</label><div class="in"><input id="c_vc" inputmode="decimal" value="150"><span class="u">m/min</span></div></div>
+            <div class="f"><label for="c_fz"><b>fz</b> avance por filo</label><div class="in"><input id="c_fz" inputmode="decimal" value="0,05"><span class="u">mm</span></div></div>
+            <div class="f"><label for="c_ap"><b>ap</b> prof. axial</label><div class="in"><input id="c_ap" inputmode="decimal" value="10"><span class="u">mm</span></div></div>
+            <div class="f"><label for="c_ae"><b>ae</b> radial / paso lateral</label><div class="in"><input id="c_ae" inputmode="decimal" value="0,5"><span class="u">mm</span></div></div>
+            <div class="f"><label for="c_voladizo">Voladizo (salida de pinza)</label><div class="in"><input id="c_voladizo" inputmode="decimal" value="35"><span class="u">mm</span></div></div>
+            <div class="f"><label for="c_objetivo">Ra objetivo</label><div class="in"><input id="c_objetivo" inputmode="decimal" value="0,8"><span class="u">µm</span></div></div>
+          </div>
+          <div class="row">
+            <span class="cap" style="margin-right:4px">Sentido de fresado</span>
+            <div class="seg" role="radiogroup" aria-label="Sentido de fresado">
+              <label><input type="radio" name="sentido" value="concordancia" checked>Concordancia</label>
+              <label><input type="radio" name="sentido" value="oposicion">Oposición</label>
+            </div>
+          </div>
+          <div class="row">
+            <div class="f" style="flex:0 1 200px"><label for="c_kcal">Factor de calibración</label><div class="in"><input id="c_kcal" inputmode="decimal" value="1"><span class="u">×</span></div></div>
+            <p class="cap" style="flex:1 1 200px">1 = sin calibrar. Ajústalo con mediciones reales en el apartado de calibración.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ======================= RESULTADOS ======================= -->
+    <div class="col">
+      <section class="card">
+        <h2>Rugosidad prevista <small id="resumen"></small></h2>
+        <div class="body">
+          <div class="lect">
+            <div class="dial" style="--c: var(--pared)" id="dPared"></div>
+            <div class="dial" style="--c: var(--suelo)" id="dSuelo"></div>
+          </div>
+          <div class="kpis" id="kpis"></div>
+          <ul class="avisos" id="avisos"></ul>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Perfil simulado</h2>
+        <div class="body">
+          <div class="tabs" role="tablist">
+            <button type="button" role="tab" data-p="pared" aria-selected="true">Pared · avance</button>
+            <button type="button" role="tab" data-p="sueloAvance" aria-selected="false">Suelo · avance</button>
+            <button type="button" role="tab" data-p="sueloTransversal" aria-selected="false">Suelo · transversal (ae)</button>
+          </div>
+          <svg class="chart" id="chProfile" viewBox="0 0 720 240" role="img" aria-label="Perfil de rugosidad simulado"></svg>
+          <p class="cap" id="capProfile"></p>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Ra frente a avance por filo</h2>
+        <div class="body">
+          <div class="legend">
+            <span><i style="--c: var(--pared)"></i>Pared</span>
+            <span><i style="--c: var(--suelo)"></i>Suelo</span>
+            <span><i style="--c: var(--target)"></i>Ra objetivo</span>
+          </div>
+          <svg class="chart" id="chFz" viewBox="0 0 720 270" role="img" aria-label="Curva de Ra en función de fz"></svg>
+          <p class="cap" id="capFz"></p>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Calibración con mediciones</h2>
+        <div class="body">
+          <p class="cap">Mecaniza unas probetas con esta herramienta, mide Ra con el rugosímetro y apúntalo aquí. El factor se ajusta por mínimos cuadrados y corrige vibraciones, desgaste y material que el modelo no ve. <span class="tag" id="calTag">Filas de ejemplo</span></p>
+          <div class="tbl-wrap">
+            <table class="cal">
+              <thead><tr><th>fz (mm)</th><th>Vc (m/min)</th><th>ap (mm)</th><th>ae (mm)</th><th>Superficie</th><th>Ra medida (µm)</th><th></th></tr></thead>
+              <tbody id="calBody"></tbody>
+            </table>
+          </div>
+          <div class="row">
+            <button type="button" class="btn small" id="calAdd">Añadir fila</button>
+            <button type="button" class="btn primary small" id="calFit">Ajustar factor</button>
+            <button type="button" class="btn small" id="calApply" hidden>Aplicar factor</button>
+          </div>
+          <p class="cap" id="calMsg"></p>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Cómo calcula</h2>
+        <div class="body method">
+          <ol style="margin:0;padding-left:20px">
+            <li><b>Perfil cinemático.</b> Simula la huella de cada filo (con excentricidad radial y axial) y toma la envolvente. Pared: arcos de radio efectivo de Martellotti <code>R ± f·z/π</code>. Suelo en avance: forma real de la punta (arista viva, chaflán 45°, radio o esférica, con dish) desplazada <code>fz</code>. Suelo transversal: cresta entre pasadas separadas <code>ae</code>.</li>
+            <li><b>Espesor mínimo de viruta</b> (Brammertz): <code>h<sub>min</sub> = λ·rβ</code> según material, suma <code>h<sub>min</sub>/2·(1 + R·h<sub>min</sub>/fz²)</code> a Rt.</li>
+            <li><b>Factor dinámico</b> empírico: ×1,5 en zona de filo recrecido y +12 % por cada unidad de voladizo/D1 por encima de 3.</li>
+            <li><b>Fuerzas</b> con Kienzle (kc1.1, mc) integrando el ángulo de hélice; <b>flexión</b> como viga escalonada: zona de corte (0,8·D1 hasta L2), cuello D3 hasta L3 y mango D2 hasta el voladizo.</li>
+            <li>Ra, Rz (media de 5 tramos) y Rt sobre 5 vueltas de herramienta; clase de rugosidad según ISO 1302.</li>
+          </ol>
+          <p class="cap">Es una estimación de ingeniería: sin calibrar, espera una dispersión de ±30–50 % respecto a la medida real. Con 3–5 mediciones calibradas suele bajar a ±15 %.</p>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="../src/rugosidad.js"></script>
+<script>
+(function () {
+  'use strict';
+  const R = window.Rugosidad;
+  const $ = (id) => document.getElementById(id);
+  const fmt = (v, d = 2) => (v == null || !Number.isFinite(v)) ? '—' : v.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const parse = (s) => { const n = parseFloat(String(s).replace(',', '.')); return Number.isFinite(n) ? n : NaN; };
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* sin almacenamiento */ } },
+  };
+
+  const TOOL_KEYS = ['z', 'D1', 'D2', 'D3', 'L1', 'L2', 'L3', 'chR', 'helice', 'dish', 'runout', 'runoutAxial', 'radioFilo'];
+  const CUT_KEYS = ['vc', 'fz', 'ap', 'ae', 'voladizo', 'kcal'];
+
+  const EJEMPLOS = [
+    { nombre: 'Ejemplo · Escuadrar 4 filos Ø10 AV', z: 4, D1: 10, D2: 10, D3: 9.5, L1: 72, L2: 22, L3: 30, arista: 'AV', chR: 0, helice: 35, dish: 1.5, runout: 5, runoutAxial: 2, radioFilo: 8, material: 'MD' },
+    { nombre: 'Ejemplo · Tórica 4 filos Ø12 R1 cuello', z: 4, D1: 12, D2: 12, D3: 11.4, L1: 100, L2: 14, L3: 45, arista: 'R', chR: 1, helice: 40, dish: 1, runout: 4, runoutAxial: 2, radioFilo: 6, material: 'MD' },
+    { nombre: 'Ejemplo · Esférica 2 filos Ø6', z: 2, D1: 6, D2: 6, D3: 5.6, L1: 57, L2: 9, L3: 20, arista: 'ESF', chR: 3, helice: 30, dish: 0, runout: 3, runoutAxial: 2, radioFilo: 5, material: 'MD' },
+    { nombre: 'Ejemplo · Aluminio 3 filos Ø8 Ch0,2', z: 3, D1: 8, D2: 8, D3: 8, L1: 63, L2: 19, L3: 19, arista: 'CH', chR: 0.2, helice: 45, dish: 2, runout: 5, runoutAxial: 3, radioFilo: 4, material: 'MD' },
+  ];
+
+  let arista = 'AV';
+  let perfilSel = 'pared';
+  let ultimo = null;
+  let calKcal = null;
+
+  // ---------- poblar selects
+  for (const [k, m] of Object.entries(R.MATERIALES)) {
+    const o = document.createElement('option'); o.value = k; o.textContent = m.nombre; $('c_material').appendChild(o);
+  }
+  $('c_material').value = 'acero_aleado';
+
+  // ---------- leer / escribir formulario
+  function leerHerramienta() {
+    const t = { arista, material: $('t_material').value };
+    for (const k of TOOL_KEYS) t[k] = parse($('t_' + k).value);
+    return t;
+  }
+  function leerCorte() {
+    const c = { material: $('c_material').value, sentido: document.querySelector('input[name=sentido]:checked').value };
+    for (const k of CUT_KEYS) c[k] = parse($('c_' + k).value);
+    return c;
+  }
+  const aTexto = (v) => String(+v.toFixed(4)).replace('.', ',');
+  function escribirHerramienta(t) {
+    for (const k of TOOL_KEYS) if (t[k] != null) $('t_' + k).value = aTexto(t[k]);
+    if (t.material) $('t_material').value = t.material;
+    setArista(t.arista || 'AV');
+    $('toolName').textContent = t.nombre || '';
+  }
+
+  function setArista(a) {
+    arista = a;
+    document.querySelectorAll('.arista').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.arista === a)));
+    const inp = $('t_chR');
+    inp.disabled = a === 'AV' || a === 'ESF';
+    $('chrHead').textContent = a === 'CH' ? 'Ch' : a === 'AV' ? 'Ch/R' : 'R';
+    if (a === 'ESF') inp.value = aTexto(parse($('t_D1').value) / 2);
+    if (a === 'AV') inp.value = '0';
+    if ((a === 'CH' || a === 'R') && !(parse(inp.value) > 0)) inp.value = a === 'CH' ? '0,2' : '0,5';
+  }
+
+  // ---------- croquis de la herramienta
+  function dibujarCroquis(t) {
+    const W = 760, x0 = 60, usable = 620;
+    const L1 = t.L1 > 0 ? t.L1 : 60;
+    const s = usable / L1;
+    const Dmax = Math.max(t.D1, t.D2, t.D3);
+    const sy = Math.min(s, 110 / Dmax);
+    const cy = 92;
+    const h = (d) => (d * sy) / 2;
+    const xL2 = x0 + Math.min(t.L2, L1) * s, xL3 = x0 + Math.min(Math.max(t.L3, t.L2), L1) * s, xL1 = x0 + L1 * s;
+    const r1 = h(t.D1), r2 = h(t.D2), r3 = h(Math.min(t.D3, t.D1));
+    let tip;
+    const c = Math.min(t.chR * sy, r1);
+    if (t.arista === 'ESF') tip = `M ${x0 + r1} ${cy - r1} A ${r1} ${r1} 0 0 0 ${x0 + r1} ${cy + r1}`;
+    else if (t.arista === 'R') tip = `M ${x0 + c} ${cy - r1} A ${c} ${c} 0 0 0 ${x0} ${cy - r1 + c} L ${x0} ${cy + r1 - c} A ${c} ${c} 0 0 0 ${x0 + c} ${cy + r1}`;
+    else if (t.arista === 'CH') tip = `M ${x0 + c} ${cy - r1} L ${x0} ${cy - r1 + c} L ${x0} ${cy + r1 - c} L ${x0 + c} ${cy + r1}`;
+    else tip = `M ${x0} ${cy - r1} L ${x0} ${cy + r1}`;
+    const tipX = t.arista === 'ESF' ? x0 + r1 : t.arista === 'AV' ? x0 : x0 + c;
+    let flutes = '';
+    const pitch = Math.max(14, (r1 * 2) / Math.tan(((t.helice || 30) * Math.PI) / 180) / Math.max(1, t.z / 2));
+    for (let x = tipX - r1 * 2; x < xL2; x += pitch) {
+      const xa = Math.max(x, tipX), xb = Math.min(x + r1 * 1.4, xL2);
+      if (xb > xa) flutes += `<line x1="${xa}" y1="${cy + r1 - 1}" x2="${xb}" y2="${cy - r1 + 1}" stroke="var(--metal-dark)" stroke-width="1.6"/>`;
+    }
+    const dim = (xa, xb, y, lab) => `<line x1="${xa}" y1="${y}" x2="${xb}" y2="${y}" stroke="var(--muted)" marker-start="url(#ar)" marker-end="url(#ar)"/><line x1="${xa}" y1="${y - 6}" x2="${xa}" y2="${y + 4}" stroke="var(--muted)"/><line x1="${xb}" y1="${y - 6}" x2="${xb}" y2="${y + 4}" stroke="var(--muted)"/><text x="${(xa + xb) / 2}" y="${y - 4}" text-anchor="middle">${lab}</text>`;
+    const vdim = (x, rr, lab, anchor) => `<line x1="${x}" y1="${cy - rr}" x2="${x}" y2="${cy + rr}" stroke="var(--muted)" marker-start="url(#ar)" marker-end="url(#ar)"/><text x="${x + (anchor === 'end' ? -6 : 6)}" y="${cy + 4}" text-anchor="${anchor}">${lab}</text>`;
+    $('sketch').innerHTML = `
+      <defs><marker id="ar" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="var(--muted)"/></marker></defs>
+      <path d="${tip} L ${xL2} ${cy + r1} L ${xL2} ${cy + r3} L ${xL3} ${cy + r3} L ${xL3} ${cy + r2} L ${xL1 - 4} ${cy + r2} L ${xL1} ${cy + r2 - 4} L ${xL1} ${cy - r2 + 4} L ${xL1 - 4} ${cy - r2} L ${xL3} ${cy - r2} L ${xL3} ${cy - r3} L ${xL2} ${cy - r3} L ${xL2} ${cy - r1} Z" fill="var(--metal)" stroke="var(--ink)" stroke-width="1.6" stroke-linejoin="round"/>
+      ${flutes}
+      <line x1="${x0 - 10}" y1="${cy}" x2="${xL1 + 10}" y2="${cy}" stroke="var(--muted)" stroke-dasharray="10 4 2 4"/>
+      ${vdim(x0 - 14, r1, 'D1', 'end')}
+      ${vdim(xL1 + 16, r2, 'D2', 'start')}
+      ${r3 < r1 - 0.5 ? vdim((xL2 + xL3) / 2, r3, 'D3', 'start') : ''}
+      ${dim(x0, xL2, cy + Math.max(r1, r2) + 34, 'L2 = ' + aTexto(t.L2))}
+      ${dim(x0, xL3, cy + Math.max(r1, r2) + 64, 'L3 = ' + aTexto(t.L3))}
+      ${dim(x0, xL1, cy + Math.max(r1, r2) + 94, 'L1 = ' + aTexto(L1))}
+      <text x="${x0}" y="${cy - Math.max(r1, r2) - 10}">z = ${t.z} filos</text>`;
+    const totalH = cy + Math.max(r1, r2) + 104;
+    $('sketch').setAttribute('viewBox', `0 0 ${W} ${Math.max(150, totalH)}`);
+  }
+
+  // ---------- resultados
+  function dial(el, titulo, s, objetivo, nota) {
+    if (!s) {
+      el.innerHTML = `<div class="t"><h3>${titulo}</h3><span class="pill na">no aplica</span></div><div class="big">—</div><p class="note">${nota}</p>`;
+      return;
+    }
+    const ok = !(objetivo > 0) ? null : s.Ra <= objetivo;
+    const pill = ok == null ? '' : `<span class="pill ${ok ? 'ok' : 'ko'}">${ok ? 'cumple' : 'no cumple'} Ra ${fmt(objetivo, 1)}</span>`;
+    el.innerHTML = `
+      <div class="t"><h3>${titulo}</h3>${pill}</div>
+      <div class="big">Ra ${fmt(s.Ra, 2)}<small>µm · ${s.grado}</small></div>
+      <dl>
+        <div><dt>Rz</dt><dd>${fmt(s.Rz, 2)} µm</dd></div>
+        <div><dt>Rt</dt><dd>${fmt(s.Rt, 2)} µm</dd></div>
+        <div><dt>Ra cinemática</dt><dd>${fmt(s.RaCin, 3)} µm</dd></div>
+      </dl>
+      <p class="note">${nota}</p>`;
+  }
+
+  function calcular() {
+    const t = leerHerramienta();
+    const c = leerCorte();
+    const objetivo = parse($('c_objetivo').value);
+    const r = R.predecir(t, c);
+    ultimo = { t, c, r, objetivo };
+    dibujarCroquis(r.tool);
+
+    dial($('dPared'), 'Pared (flanco)', r.pared, objetivo, 'Fresado periférico, perfil en la dirección de avance.');
+    const sNota = r.suelo.direccion === 'transversal'
+      ? 'Domina la cresta transversal entre pasadas (paso ae).'
+      : 'Domina la marca de avance del filo frontal.';
+    dial($('dSuelo'), 'Suelo (fondo)', r.suelo, objetivo, sNota);
+
+    const m = r.maquina, f = r.fuerzas;
+    const k = [
+      ['Velocidad de giro n', fmt(m.n, 0) + ' rpm'],
+      ['Avance Vf', fmt(m.vf, 0) + ' mm/min'],
+      ['Diámetro efectivo', fmt(m.Deff, 2) + ' mm'],
+      ['Caudal de viruta Q', fmt(m.Q, 2) + ' cm³/min'],
+      ['Fuerza máx.', fmt(f.Fmax, 0) + ' N'],
+      ['Par medio', fmt(f.par, 2) + ' N·m'],
+      ['Potencia de corte', fmt(f.potencia, 2) + ' kW'],
+      ['Rigidez en punta', fmt(f.rigidez, 1) + ' N/µm'],
+      ['Flexión (normal a pared)', fmt(f.flexion, 1) + ' µm'],
+      ['Espesor viruta máx.', fmt(f.hex * 1000, 1) + ' µm'],
+    ];
+    $('kpis').innerHTML = k.map(([a, b]) => `<div class="kpi"><span>${a}</span><b>${b}</b></div>`).join('');
+    $('avisos').innerHTML = r.avisos.map((a) => `<li class="${a.nivel}">${a.texto}</li>`).join('');
+    $('resumen').textContent = R.MATERIALES[r.cut.material].nombre;
+
+    dibujarPerfil();
+    dibujarCurva();
+    store.set('rv_estado', { t: Object.assign({}, t), c, objetivo });
+  }
+
+  // ---------- gráficos
+  function ticks(min, max, n) {
+    const span = max - min || 1;
+    const step0 = span / n;
+    const mag = Math.pow(10, Math.floor(Math.log10(step0)));
+    const step = [1, 2, 2.5, 5, 10].map((v) => v * mag).find((v) => span / v <= n) || mag * 10;
+    const out = [];
+    for (let v = Math.ceil(min / step) * step; v <= max + step * 1e-6; v += step) out.push(+v.toFixed(10));
+    return out;
+  }
+  const decs = (arr) => { const s = arr.length > 1 ? Math.abs(arr[1] - arr[0]) : 1; let d = 0; while (d < 4 && Math.abs(s * 10 ** d - Math.round(s * 10 ** d)) > 1e-6) d++; return d; };
+
+  function dibujarPerfil() {
+    const svg = $('chProfile');
+    const r = ultimo.r;
+    document.querySelectorAll('.tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.p === perfilSel)));
+    const s = r[perfilSel];
+    if (!s) {
+      svg.innerHTML = `<text x="360" y="115" text-anchor="middle" class="lbl">No aplica con esta herramienta / condiciones</text>`;
+      $('capProfile').textContent = '';
+      return;
+    }
+    const { xs, ys } = s.perfil;
+    let mn = Infinity, mx = -Infinity;
+    for (const v of ys) { if (v < mn) mn = v; if (v > mx) mx = v; }
+    const yUm = Array.from(ys, (v) => (v - mn) * 1000);
+    const top = Math.max((mx - mn) * 1000, 1e-3);
+    const X0 = 70, X1 = 704, Y0 = 18, Y1 = 196;
+    const xmax = xs[xs.length - 1];
+    const px = (x) => X0 + (x / xmax) * (X1 - X0);
+    const yt = ticks(0, top * 1.1, 4);
+    const ymaxAx = Math.max(top * 1.1, yt[yt.length - 1]);
+    const py = (v) => Y1 - (v / ymaxAx) * (Y1 - Y0);
+    const step = Math.max(1, Math.floor(xs.length / 700));
+    let d = `M ${px(xs[0])} ${py(yUm[0])}`;
+    for (let i = step; i < xs.length; i += step) d += ` L ${px(xs[i]).toFixed(1)} ${py(yUm[i]).toFixed(1)}`;
+    const area = `${d} L ${X1} ${Y1} L ${X0} ${Y1} Z`;
+    const col = perfilSel === 'pared' ? 'var(--pared)' : 'var(--suelo)';
+    const xt = ticks(0, xmax, 6), xd = decs(xt), yd = decs(yt);
+    // línea media
+    const mean = yUm.reduce((a, b) => a + b, 0) / yUm.length;
+    svg.innerHTML = `
+      ${yt.map((v) => `<line x1="${X0}" x2="${X1}" y1="${py(v)}" y2="${py(v)}" stroke="var(--line)"/><text x="${X0 - 8}" y="${py(v) + 4}" text-anchor="end">${fmt(v, yd)}</text>`).join('')}
+      ${xt.map((v) => `<text x="${px(v)}" y="${Y1 + 18}" text-anchor="middle">${fmt(v, xd)}</text>`).join('')}
+      <path d="${area}" fill="${col}" fill-opacity="0.16"/>
+      <path d="${d}" fill="none" stroke="${col}" stroke-width="1.8"/>
+      <line x1="${X0}" x2="${X1}" y1="${py(mean)}" y2="${py(mean)}" stroke="var(--target)" stroke-dasharray="5 4"/>
+      <text x="${X1}" y="${py(mean) - 5}" text-anchor="end">línea media</text>
+      <text x="${X0}" y="${Y1 + 38}" class="lbl">mm →</text>
+      <text x="6" y="${Y0 + 4}" class="lbl">µm</text>`;
+    const per = perfilSel === 'sueloTransversal' ? `paso ae = ${fmt(ultimo.r.cut.ae, 3)} mm` : `f/vuelta = ${fmt(ultimo.r.cut.fz * ultimo.r.tool.z, 3)} mm`;
+    $('capProfile').textContent = `Perfil cinemático (sin factor dinámico ni hmin), escala vertical exagerada. Rt cinemática ${fmt(s.RtCin, 3)} µm · ${per}.`;
+  }
+
+  function dibujarCurva() {
+    const { t, c, objetivo } = ultimo;
+    const fzMax = Math.max(0.15, (ultimo.r.cut.fz || 0.05) * 2.5);
+    const pts = R.curvaFz(t, c, 0.005, fzMax, 46);
+    let ymax = 0;
+    for (const p of pts) ymax = Math.max(ymax, p.pared || 0, p.suelo || 0);
+    if (objetivo > 0) ymax = Math.max(ymax, objetivo * 1.2);
+    const X0 = 62, X1 = 700, Y0 = 18, Y1 = 214;
+    const xt = ticks(0, fzMax, 6), yt = ticks(0, ymax * 1.05, 5);
+    const xmaxAx = Math.max(fzMax, xt[xt.length - 1]);
+    const ymaxAx = Math.max(ymax * 1.05, yt[yt.length - 1]);
+    const px = (x) => X0 + (x / xmaxAx) * (X1 - X0);
+    const py = (v) => Y1 - (v / ymaxAx) * (Y1 - Y0);
+    const line = (k) => pts.filter((p) => p[k] != null).map((p, i) => `${i ? 'L' : 'M'} ${px(p.fz).toFixed(1)} ${py(p[k]).toFixed(1)}`).join(' ');
+    const r = ultimo.r;
+    const dot = (v, col) => v == null ? '' : `<circle cx="${px(r.cut.fz)}" cy="${py(v)}" r="5.5" fill="${col}" stroke="var(--panel)" stroke-width="2"/>`;
+    const xd = decs(xt), yd = decs(yt);
+    $('chFz').innerHTML = `
+      ${yt.map((v) => `<line x1="${X0}" x2="${X1}" y1="${py(v)}" y2="${py(v)}" stroke="var(--line)"/><text x="${X0 - 8}" y="${py(v) + 4}" text-anchor="end">${fmt(v, yd)}</text>`).join('')}
+      ${xt.map((v) => `<text x="${px(v)}" y="${Y1 + 18}" text-anchor="middle">${fmt(v, xd)}</text>`).join('')}
+      ${objetivo > 0 ? `<line x1="${X0}" x2="${X1}" y1="${py(objetivo)}" y2="${py(objetivo)}" stroke="var(--target)" stroke-dasharray="6 4" stroke-width="1.5"/>` : ''}
+      <line x1="${px(r.cut.fz)}" x2="${px(r.cut.fz)}" y1="${Y0}" y2="${Y1}" stroke="var(--line)" stroke-dasharray="2 3"/>
+      <path d="${line('pared')}" fill="none" stroke="var(--pared)" stroke-width="2.2"/>
+      <path d="${line('suelo')}" fill="none" stroke="var(--suelo)" stroke-width="2.2"/>
+      ${dot(r.pared && r.pared.Ra, 'var(--pared)')}${dot(r.suelo.Ra, 'var(--suelo)')}
+      <text x="${X1}" y="${Y1 + 42}" text-anchor="end" class="lbl">fz (mm/filo)</text>
+      <text x="10" y="${Y0 + 4}" class="lbl">Ra µm</text>`;
+    let cap = '';
+    if (objetivo > 0) {
+      const z = r.tool.z, n = r.maquina.n;
+      const parte = (nombre, sup) => {
+        const fz = R.fzParaRa(t, c, objetivo, sup);
+        if (fz == null) return sup === 'pared' && !r.pared ? '' : `${nombre}: no se alcanza Ra ${fmt(objetivo, 2)} µm ni con fz mínimo.`;
+        return `${nombre}: fz máx. ≈ ${fmt(fz, 3)} mm (Vf ≈ ${fmt(fz * z * n, 0)} mm/min).`;
+      };
+      cap = [`Para Ra ≤ ${fmt(objetivo, 2)} µm →`, parte('Pared', 'pared'), parte('Suelo', 'suelo')].filter(Boolean).join(' ');
+    }
+    $('capFz').textContent = cap;
+  }
+
+  // ---------- biblioteca
+  function biblioteca() { return store.get('rv_lib', null) || EJEMPLOS.slice(); }
+  function pintarLib(sel) {
+    const lib = biblioteca();
+    $('lib').innerHTML = lib.map((h, i) => `<option value="${i}">${h.nombre}</option>`).join('');
+    if (sel != null) $('lib').value = String(sel);
+  }
+  $('btnLoad').onclick = () => { const h = biblioteca()[+$('lib').value]; if (h) { escribirHerramienta(h); calcular(); } };
+  $('btnSave').onclick = () => {
+    const lib = biblioteca();
+    const t = leerHerramienta();
+    const geo = { AV: 'AV', CH: 'Ch' + aTexto(t.chR), R: 'R' + aTexto(t.chR), ESF: 'esférica' }[t.arista];
+    t.nombre = `${t.z} filos Ø${aTexto(t.D1)} ${geo} L${aTexto(t.L1)}`;
+    lib.push(t); store.set('rv_lib', lib); pintarLib(lib.length - 1);
+    $('toolName').textContent = t.nombre;
+  };
+  $('btnDel').onclick = () => {
+    const lib = biblioteca(); lib.splice(+$('lib').value, 1); store.set('rv_lib', lib); pintarLib(0);
+  };
+  $('btnExport').onclick = () => { $('json').value = JSON.stringify(biblioteca(), null, 1); $('jsonMsg').textContent = 'Copia el texto y guárdalo como archivo .json.'; };
+  $('btnCopy').onclick = () => {
+    const ta = $('json');
+    if (!ta.value) ta.value = JSON.stringify(biblioteca(), null, 1);
+    const ok = () => { $('jsonMsg').textContent = 'Copiado al portapapeles.'; };
+    const fallo = () => { ta.focus(); ta.select(); $('jsonMsg').textContent = 'Texto seleccionado: pulsa Ctrl+C para copiarlo.'; };
+    try { navigator.clipboard.writeText(ta.value).then(ok, fallo); } catch (e) { fallo(); }
+  };
+  function importar(txt) {
+    try {
+      let data = JSON.parse(txt);
+      if (!Array.isArray(data)) data = [data];
+      const val = data.filter((h) => h && typeof h === 'object' && Number.isFinite(+h.D1));
+      if (!val.length) throw new Error('sin herramientas');
+      val.forEach((h, i) => { h.nombre = h.nombre || `Importada ${i + 1}`; });
+      const lib = biblioteca().concat(val); store.set('rv_lib', lib); pintarLib(lib.length - val.length);
+      $('jsonMsg').textContent = `${val.length} herramienta(s) importadas.`;
+    } catch (e) {
+      $('jsonMsg').textContent = 'No se pudo leer: el texto debe ser JSON con al menos el campo D1 por herramienta.';
+    }
+  }
+  $('btnImport').onclick = () => importar($('json').value);
+  $('file').onchange = (e) => { const f = e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => importar(String(rd.result)); rd.readAsText(f); };
+
+  // ---------- calibración
+  const CAL_EJ = [
+    { fz: 0.03, vc: 150, ap: 10, ae: 0.5, superficie: 'pared', ra: 0.62 },
+    { fz: 0.06, vc: 150, ap: 10, ae: 0.5, superficie: 'pared', ra: 0.95 },
+    { fz: 0.06, vc: 150, ap: 10, ae: 0.5, superficie: 'suelo', ra: 1.40 },
+  ];
+  function filaCal(m) {
+    const tr = document.createElement('tr');
+    const v = (x) => x == null ? '' : aTexto(x);
+    tr.innerHTML = `
+      <td><input inputmode="decimal" data-k="fz" value="${v(m.fz)}" aria-label="fz"></td>
+      <td><input inputmode="decimal" data-k="vc" value="${v(m.vc)}" aria-label="Vc"></td>
+      <td><input inputmode="decimal" data-k="ap" value="${v(m.ap)}" aria-label="ap"></td>
+      <td><input inputmode="decimal" data-k="ae" value="${v(m.ae)}" aria-label="ae"></td>
+      <td><select data-k="superficie" aria-label="Superficie"><option value="pared">Pared</option><option value="suelo">Suelo</option></select></td>
+      <td><input inputmode="decimal" data-k="ra" value="${v(m.ra)}" aria-label="Ra medida"></td>
+      <td><button type="button" class="btn small" aria-label="Quitar fila">×</button></td>`;
+    tr.querySelector('select').value = m.superficie || 'pared';
+    tr.querySelector('button').onclick = () => { tr.remove(); guardarCal(); };
+    tr.addEventListener('input', () => { $('calTag').hidden = true; guardarCal(); });
+    $('calBody').appendChild(tr);
+  }
+  function leerCal() {
+    return Array.from($('calBody').rows).map((tr) => {
+      const m = {};
+      tr.querySelectorAll('[data-k]').forEach((el) => { m[el.dataset.k] = el.dataset.k === 'superficie' ? el.value : parse(el.value); });
+      return m;
+    });
+  }
+  function guardarCal() { store.set('rv_cal', leerCal()); }
+  $('calAdd').onclick = () => { const c = leerCorte(); filaCal({ fz: c.fz, vc: c.vc, ap: c.ap, ae: c.ae, superficie: 'pared' }); };
+  $('calFit').onclick = () => {
+    const res = R.calibrar(leerHerramienta(), leerCorte(), leerCal());
+    if (!res) { $('calMsg').textContent = 'Introduce al menos una fila con Ra medida mayor que 0.'; $('calApply').hidden = true; return; }
+    calKcal = res.kcal;
+    $('calMsg').textContent = `Factor ajustado: ${fmt(res.kcal, 3)} con ${res.filas.length} medida(s). Error medio tras calibrar: ${fmt(res.errorMedio * 100, 0)} %.`;
+    $('calApply').hidden = false;
+  };
+  $('calApply').onclick = () => { if (calKcal) { $('c_kcal').value = aTexto(+calKcal.toFixed(3)); calcular(); $('calMsg').textContent += ' Aplicado.'; } };
+
+  // ---------- eventos
+  let tm = null;
+  const programar = () => { clearTimeout(tm); tm = setTimeout(calcular, 120); };
+  document.querySelectorAll('.col input, .col select').forEach((el) => {
+    if (el.closest('#calBody') || el.id === 'file' || el.id === 'lib') return;
+    el.addEventListener('input', programar);
+    el.addEventListener('change', programar);
+  });
+  $('t_D1').addEventListener('input', () => { if (arista === 'ESF') $('t_chR').value = aTexto(parse($('t_D1').value) / 2); });
+  document.querySelectorAll('.arista').forEach((b) => b.onclick = () => { setArista(b.dataset.arista); calcular(); });
+  document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => { perfilSel = b.dataset.p; dibujarPerfil(); });
+
+  // ---------- arranque
+  pintarLib(0);
+  const prev = store.get('rv_estado', null);
+  if (prev && prev.t) {
+    escribirHerramienta(prev.t);
+    for (const k of CUT_KEYS) if (Number.isFinite(prev.c[k])) $('c_' + k).value = aTexto(prev.c[k]);
+    if (prev.c.material) $('c_material').value = prev.c.material;
+    const rb = document.querySelector(`input[name=sentido][value=${prev.c.sentido}]`); if (rb) rb.checked = true;
+    if (Number.isFinite(prev.objetivo)) $('c_objetivo').value = aTexto(prev.objetivo);
+  } else {
+    escribirHerramienta(EJEMPLOS[0]);
+  }
+  const cal = store.get('rv_cal', null);
+  (cal && cal.length ? cal : CAL_EJ).forEach(filaCal);
+  $('calTag').hidden = !!(cal && cal.length);
+  calcular();
+})();
+</script>
