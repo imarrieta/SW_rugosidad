@@ -73,14 +73,16 @@ header.top p { margin: 0; color: var(--muted); }
 .body { padding: 14px; display: flex; flex-direction: column; gap: 14px; }
 
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-button.btn {
+a.btn, button.btn {
   font: 600 14px var(--font-body); border-radius: 4px; padding: 7px 12px; cursor: pointer;
   border: 1px solid var(--accent); background: transparent; color: var(--accent);
 }
 button.btn.primary { background: var(--head-bg); border-color: var(--head-bg); color: var(--head-ink); }
 button.btn.small { padding: 4px 9px; font-size: 13px; }
 button.btn.danger { border-color: var(--bad); color: var(--bad); }
-button.btn:hover { filter: brightness(1.08); }
+button.btn:hover, a.btn:hover { filter: brightness(1.08); }
+a.btn { text-decoration: none; display: inline-block; }
+button:disabled { opacity: .5; cursor: default; }
 button.icon {
   border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 4px 6px; border-radius: 4px;
   font: 600 14px var(--font-body); line-height: 1;
@@ -164,6 +166,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .dlbl span { text-align: center; font: 11px var(--font-body); color: var(--muted); overflow: hidden; white-space: nowrap; }
 
 /* ---------- registros ---------- */
+.bars h4 { margin: 6px 0 0; font: 600 14px var(--font-display); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .dayhead { display: flex; justify-content: space-between; font: 600 15px var(--font-display); letter-spacing: .03em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); padding: 4px 0; }
 .entries { list-style: none; margin: 0 0 6px; padding: 0; }
 .entries li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 2px 10px; align-items: center; padding: 7px 0; border-bottom: 1px dashed var(--line); }
@@ -189,16 +192,18 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
   <header class="top">
     <div>
       <h1>Horas por proyecto</h1>
-      <p>Cronómetro y registro de horas. Los datos se guardan en este navegador.</p>
+      <p id="subtitulo">Cronómetro y registro de horas. Los datos se guardan en este navegador.</p>
     </div>
     <div class="row">
       <button class="btn small" id="btnCSV" title="Registros del periodo seleccionado, para Excel">Exportar CSV</button>
+      <a class="btn small" id="lnkHoja" target="_blank" rel="noopener" hidden>Abrir hoja de datos</a>
       <button class="btn small" id="btnBackup" title="Descarga todos los datos en JSON">Copia de seguridad</button>
       <button class="btn small" id="btnRestore" title="Carga una copia de seguridad JSON">Restaurar…</button>
       <input type="file" id="fileRestore" accept=".json,application/json" hidden>
     </div>
   </header>
 
+  <div class="banner" id="aviso" role="alert" hidden></div>
   <div class="banner" id="noStorage" hidden>Este navegador no permite guardar datos: lo que registres se perderá al cerrar la página. Usa «Copia de seguridad» para no perderlo.</div>
 
   <section class="card" style="margin-bottom:18px">
@@ -242,10 +247,12 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
             <span class="lbl" id="plabel"></span>
             <button class="btn small" id="next" aria-label="Periodo siguiente">▶</button>
             <button class="btn small" id="hoy">Hoy</button>
+            <select id="quien" aria-label="De quién son las horas" hidden style="margin-left:auto;font:14px var(--font-body);padding:5px 6px;border-radius:4px;border:1px solid var(--line);background:var(--field);color:var(--ink)"></select>
           </div>
           <div class="big" id="big"></div>
           <div id="chart"></div>
           <div class="bars" id="bars"></div>
+          <div class="bars" id="barsPersona" hidden></div>
         </div>
       </section>
 
@@ -320,9 +327,23 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
   const ICON_PLAY = '<svg viewBox="0 0 12 12"><path d="M2 1l9 5-9 5z" fill="currentColor"/></svg>';
   const ICON_STOP = '<svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" rx="1" fill="currentColor"/></svg>';
 
-  // ---------- almacenamiento ----------
+  // Dos modos con la misma interfaz:
+  //  - local: archivo abierto en el navegador, datos en localStorage.
+  //  - compartido: servida por Google Apps Script; los datos viven en la hoja de cálculo.
+  //    Cada acción se aplica al momento en pantalla (validada con el mismo motor) y se
+  //    envía al servidor, cuya respuesta es la verdad.
+  const REMOTO = typeof google !== 'undefined' && google.script && google.script.run;
+  let sesion = { yo: '', admin: false, verGrupo: false, crearProyectos: true, hojaUrl: '' };
+  let cargando = !!REMOTO;
+  let pendientes = 0;
+
+  // ---------- preferencias y almacenamiento local ----------
   let guardable = true;
-  function cargar() {
+  const pref = {
+    get(k, d) { try { return localStorage.getItem(CLAVE + ':' + k) ?? d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(CLAVE + ':' + k, v); } catch (e) { /* sin almacenamiento */ } },
+  };
+  function cargarLocal() {
     try {
       const txt = localStorage.getItem(CLAVE);
       return txt ? H.normalizarEstado(JSON.parse(txt)) : H.estadoVacio();
@@ -332,22 +353,48 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
       return H.estadoVacio();
     }
   }
-  function guardar() {
+  function guardarLocal() {
+    if (REMOTO) return;
     try { localStorage.setItem(CLAVE, JSON.stringify(estado)); } catch (e) { guardable = false; }
     $('noStorage').hidden = guardable;
   }
-  const pref = {
-    get(k, d) { try { return localStorage.getItem(CLAVE + ':' + k) ?? d; } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem(CLAVE + ':' + k, v); } catch (e) { /* sin almacenamiento */ } },
-  };
 
-  let estado = cargar();
-  let vista = { tipo: pref.get('periodo', 'semana'), salto: 0, filtro: '' };
+  let estado = REMOTO ? H.estadoVacio() : cargarLocal();
+  let vista = { tipo: pref.get('periodo', 'semana'), salto: 0, filtro: '', quien: 'yo' };
 
-  function aplicar(nuevo) {
-    estado = nuevo;
-    guardar();
+  // ---------- servidor ----------
+  function llamar(op, args) {
+    return new Promise((ok, mal) => {
+      google.script.run.withSuccessHandler(ok).withFailureHandler((e) => mal(e instanceof Error ? e : new Error(String(e && e.message || e)))).api(op, args);
+    });
+  }
+  function recibir(r) {
+    sesion = r.sesion;
+    estado = H.normalizarEstado(r.estado);
+    cargando = false;
+    aviso('');
     render();
+  }
+  function refrescar() {
+    if (!REMOTO || pendientes || document.querySelector('dialog[open]')) return;
+    llamar('estado').then((r) => { if (!pendientes) recibir(r); }, (e) => aviso(e.message));
+  }
+  function aviso(msg) { $('aviso').textContent = msg; $('aviso').hidden = !msg; }
+
+  // Aplica `local()` (lanza si no es válido) y, en modo compartido, manda la operación.
+  function ejecutar(op, args, local) {
+    const nuevo = local();
+    // Los tramos creados aquí (p. ej. al parar) son míos hasta que responda el servidor.
+    if (REMOTO) nuevo.registros = nuevo.registros.map((r) => (r.persona ? r : { ...r, persona: sesion.yo }));
+    estado = nuevo;
+    guardarLocal();
+    render();
+    if (!REMOTO) return;
+    pendientes++;
+    llamar(op, args).then(
+      (r) => { pendientes--; if (!pendientes) recibir(r); },
+      (e) => { pendientes--; toast(e.message); refrescar(); },
+    );
   }
   function intentar(fn, errEl) {
     try { fn(); if (errEl) errEl.hidden = true; return true; } catch (e) {
@@ -359,21 +406,35 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
     const t = document.createElement('div');
     t.className = 'toast'; t.textContent = msg; t.setAttribute('role', 'status');
     document.body.appendChild(t);
-    setTimeout(() => t.remove(), 2600);
+    setTimeout(() => t.remove(), 3200);
   }
 
   const proyecto = (id) => estado.proyectos.find((p) => p.id === id);
   const activos = () => estado.proyectos.filter((p) => !p.archivado);
+  const puedeEditarProyecto = (p) => !REMOTO || sesion.admin || (p.creadoPor && p.creadoPor === sesion.yo);
+  const puedeEditarRegistro = (r) => !REMOTO || sesion.admin || r.persona === sesion.yo;
+
+  // Mis horas (lista de proyectos y cronómetro) y las de la vista elegida (resumen y registros).
+  function estadoDe(quien) {
+    if (!REMOTO) return estado;
+    // El cronómetro en marcha es siempre el mío (los de los demás no se envían).
+    const activo = estado.activo && { ...estado.activo, persona: sesion.yo };
+    if (quien === 'grupo') return { ...estado, activo };
+    const email = quien === 'yo' ? sesion.yo : quien;
+    return { ...estado, registros: estado.registros.filter((r) => r.persona === email), activo: email === sesion.yo ? activo : null };
+  }
+  const estadoMio = () => estadoDe('yo');
+  const estadoVista = () => estadoDe(vista.quien);
 
   // ---------- cronómetro ----------
   function renderTimer() {
     const sel = $('tProyecto');
     const actual = estado.activo ? estado.activo.proyectoId : (sel.value || pref.get('ultimo', ''));
     const lista = activos();
-    if (estado.activo && !lista.some((p) => p.id === estado.activo.proyectoId)) lista.push(proyecto(estado.activo.proyectoId));
+    if (estado.activo && !lista.some((p) => p.id === estado.activo.proyectoId) && proyecto(estado.activo.proyectoId)) lista.push(proyecto(estado.activo.proyectoId));
     sel.innerHTML = lista.length
       ? lista.map((p) => `<option value="${esc(p.id)}">${esc(p.nombre)}${p.cliente ? ' · ' + esc(p.cliente) : ''}</option>`).join('')
-      : '<option value="">Crea un proyecto primero</option>';
+      : `<option value="">${cargando ? 'Cargando…' : 'Crea un proyecto primero'}</option>`;
     if (lista.some((p) => p.id === actual)) sel.value = actual;
     sel.disabled = !lista.length;
     const on = !!estado.activo;
@@ -381,18 +442,19 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
     const b = $('btnTimer');
     b.textContent = on ? 'Parar' : 'Iniciar';
     b.classList.toggle('stop', on);
-    b.disabled = !on && !lista.length;
+    b.disabled = cargando || (!on && !lista.length);
     if (on && document.activeElement !== $('tNota')) $('tNota').value = estado.activo.nota;
     tick();
   }
   function tick() {
-    const ms = estado.activo ? Date.now() - estado.activo.inicio : 0;
+    const ms = estado.activo ? Math.max(0, Date.now() - estado.activo.inicio) : 0;
     $('clock').textContent = H.formatDuracion(ms, true);
     document.title = estado.activo ? `${H.formatDuracion(ms)} · ${proyecto(estado.activo.proyectoId)?.nombre || ''}` : 'Horas por Proyecto';
   }
   function toggleTimer(proyectoId) {
+    const ahora = Date.now();
     if (estado.activo && (!proyectoId || estado.activo.proyectoId === proyectoId)) {
-      aplicar(H.parar(estado, Date.now()));
+      ejecutar('parar', { cuando: ahora }, () => H.parar(estado, ahora));
       $('tNota').value = '';
       return;
     }
@@ -400,7 +462,7 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
     if (!id) return;
     pref.set('ultimo', id);
     const nota = proyectoId && proyectoId !== $('tProyecto').value ? '' : $('tNota').value.trim();
-    intentar(() => aplicar(H.iniciar(estado, id, Date.now(), nota)));
+    intentar(() => ejecutar('iniciar', { proyectoId: id, nota, cuando: ahora }, () => H.iniciar(estado, id, ahora, nota)));
   }
   $('btnTimer').onclick = () => toggleTimer();
   $('tProyecto').onchange = () => {
@@ -409,33 +471,37 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
     if (estado.activo && $('tProyecto').value !== estado.activo.proyectoId) toggleTimer($('tProyecto').value);
   };
   $('tNota').addEventListener('change', () => {
-    if (estado.activo) { estado = { ...estado, activo: { ...estado.activo, nota: $('tNota').value.trim() } }; guardar(); renderEntries(); }
+    if (!estado.activo) return;
+    const nota = $('tNota').value.trim();
+    ejecutar('notaActivo', { nota }, () => ({ ...estado, activo: { ...estado.activo, nota } }));
   });
   $('tNota').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !estado.activo) toggleTimer(); });
 
   // ---------- proyectos ----------
   function renderProjects() {
     const ahora = Date.now();
+    const mio = estadoMio();
     const dia = H.periodo('dia', ahora), sem = H.periodo('semana', ahora);
-    const tDia = H.totales(estado, dia.desde, dia.hasta, ahora).porProyecto;
-    const tSem = H.totales(estado, sem.desde, sem.hasta, ahora).porProyecto;
+    const tDia = H.totales(mio, dia.desde, dia.hasta, ahora).porProyecto;
+    const tSem = H.totales(mio, sem.desde, sem.hasta, ahora).porProyecto;
     const verArch = $('showArch').checked;
     const lista = estado.proyectos.filter((p) => verArch || !p.archivado);
     const nArch = estado.proyectos.filter((p) => p.archivado).length;
     $('pCount').textContent = `${activos().length} activos${nArch ? ` · ${nArch} archivados` : ''}`;
+    $('addp').hidden = REMOTO && !sesion.crearProyectos;
     $('plist').innerHTML = lista.length ? lista.map((p) => {
       const on = estado.activo && estado.activo.proyectoId === p.id;
       return `<li class="${on ? 'on' : ''} ${p.archivado ? 'arch' : ''}">
         <span class="dot" style="background:${esc(p.color)}"></span>
         <span class="name"><b>${esc(p.nombre)}</b>${p.cliente || p.tarifa ? `<small>${esc(p.cliente)}${p.cliente && p.tarifa ? ' · ' : ''}${p.tarifa ? eur.format(p.tarifa) + '/h' : ''}</small>` : ''}</span>
-        <span class="num">${H.formatDuracion(tDia[p.id] || 0)}<span>hoy</span></span>
+        <span class="num">${H.formatDuracion(tDia[p.id] || 0)}<span>${REMOTO ? 'mis h hoy' : 'hoy'}</span></span>
         <span class="num">${H.formatDuracion(tSem[p.id] || 0)}<span>semana</span></span>
         <span class="row" style="gap:2px;flex-wrap:nowrap">
           ${p.archivado ? '' : `<button class="play ${on ? 'on' : ''}" data-play="${esc(p.id)}" aria-label="${on ? 'Parar' : 'Iniciar'} ${esc(p.nombre)}" title="${on ? 'Parar' : 'Iniciar'}">${on ? ICON_STOP : ICON_PLAY}</button>`}
-          <button class="icon" data-edit="${esc(p.id)}" aria-label="Editar ${esc(p.nombre)}" title="Editar">✎</button>
+          ${puedeEditarProyecto(p) ? `<button class="icon" data-edit="${esc(p.id)}" aria-label="Editar ${esc(p.nombre)}" title="Editar">✎</button>` : '<span style="width:26px"></span>'}
         </span>
       </li>`;
-    }).join('') : '<li class="empty" style="display:block">Aún no hay proyectos. Añade el primero aquí abajo.</li>';
+    }).join('') : `<li class="empty" style="display:block">${cargando ? 'Cargando…' : REMOTO && !sesion.crearProyectos ? 'Aún no hay proyectos. Pide a un administrador que los cree.' : 'Aún no hay proyectos. Añade el primero aquí abajo.'}</li>`;
   }
   $('plist').onclick = (e) => {
     const play = e.target.closest('[data-play]');
@@ -446,11 +512,13 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
   $('addp').onsubmit = (e) => {
     e.preventDefault();
     intentar(() => {
-      const r = H.crearProyecto(estado, { nombre: $('newName').value });
-      pref.set('ultimo', r.proyecto.id);
+      const datos = { id: H.nuevoId(), nombre: $('newName').value.trim() };
+      if (REMOTO) datos.creadoPor = sesion.yo;
+      ejecutar('crearProyecto', { datos }, () => H.crearProyecto(estado, datos).estado);
+      pref.set('ultimo', datos.id);
       $('newName').value = '';
       $('tProyecto').value = '';
-      aplicar(r.estado);
+      renderTimer();
     });
   };
   $('showArch').onchange = renderProjects;
@@ -461,25 +529,28 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
     editandoProyecto = id;
     $('pNombre').value = p.nombre; $('pCliente').value = p.cliente; $('pTarifa').value = p.tarifa || '';
     $('pColor').value = p.color; $('pArch').checked = p.archivado; $('pErr').hidden = true;
+    $('pDel').hidden = REMOTO && !sesion.admin;
     $('dlgProj').showModal();
   }
   $('fpProj').addEventListener('submit', (e) => {
     const accion = e.submitter && e.submitter.value;
+    const id = editandoProyecto;
     if (accion === 'del') {
-      const p = proyecto(editandoProyecto);
+      const p = proyecto(id);
       const n = estado.registros.filter((r) => r.proyectoId === p.id).length;
-      if (!confirm(`¿Borrar «${p.nombre}» y sus ${n} registros? No se puede deshacer.`)) { e.preventDefault(); return; }
-      aplicar(H.borrarProyecto(estado, editandoProyecto));
+      const quien = REMOTO ? ' de todo el grupo' : '';
+      if (!confirm(`¿Borrar «${p.nombre}» y sus ${n} registros${quien}? No se puede deshacer.`)) { e.preventDefault(); return; }
+      ejecutar('borrarProyecto', { id }, () => H.borrarProyecto(estado, id));
       return;
     }
     if (accion !== 'ok') return;
     const ok = intentar(() => {
-      let s = H.editarProyecto(estado, editandoProyecto, {
+      const cambios = {
         nombre: $('pNombre').value, cliente: $('pCliente').value.trim(), tarifa: $('pTarifa').value,
         color: $('pColor').value, archivado: $('pArch').checked,
-      });
-      if ($('pArch').checked && s.activo && s.activo.proyectoId === editandoProyecto) s = H.parar(s, Date.now());
-      aplicar(s);
+      };
+      ejecutar('editarProyecto', { id, cambios }, () => H.editarProyecto(estado, id, cambios));
+      if (cambios.archivado && estado.activo && estado.activo.proyectoId === id) toggleTimer();
     }, $('pErr'));
     if (!ok) e.preventDefault();
   });
@@ -496,39 +567,70 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
   }
   function periodoActual() { return H.periodo(vista.tipo, Date.now(), vista.salto); }
 
+  function renderQuien() {
+    const sel = $('quien');
+    sel.hidden = !REMOTO || !sesion.verGrupo;
+    if (sel.hidden) { vista.quien = 'yo'; return; }
+    const personas = [...new Set(estado.registros.map((r) => r.persona).filter((x) => x && x !== sesion.yo))]
+      .sort((a, b) => H.nombrePersona(a).localeCompare(H.nombrePersona(b), 'es'));
+    if (vista.quien !== 'yo' && vista.quien !== 'grupo' && !personas.includes(vista.quien)) vista.quien = 'yo';
+    sel.innerHTML = '<option value="yo">Mis horas</option><option value="grupo">Todo el grupo</option>' +
+      (personas.length ? `<optgroup label="Persona">${personas.map((p) => `<option value="${esc(p)}">${esc(H.nombrePersona(p))}</option>`).join('')}</optgroup>` : '');
+    sel.value = vista.quien;
+  }
+
+  function barras(filas, total, conImporte) {
+    const max = filas.length ? filas[0].ms : 1;
+    return filas.map((f) => `
+      <div class="bar">
+        <span class="n"><span class="dot" style="background:${esc(f.color)}"></span><span title="${esc(f.titulo || f.nombre)}">${esc(f.nombre)}</span></span>
+        <span class="t"><i style="width:${(f.ms / max * 100).toFixed(1)}%;background:${esc(f.color)}"></i></span>
+        <span class="v">${H.formatDuracion(f.ms)} <small>${Math.round(f.ms / total * 100)} %${conImporte && f.tarifa ? ' · ' + eur.format(f.tarifa * f.ms / H.HORA) : ''}</small></span>
+      </div>`).join('');
+  }
+
   function renderSummary() {
     const ahora = Date.now();
     const p = periodoActual();
+    const ev = estadoVista();
+    renderQuien();
     document.querySelectorAll('#seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.p === vista.tipo)));
     $('plabel').textContent = etiquetaPeriodo(vista.tipo, p);
     const todo = vista.tipo === 'todo';
     $('prev').hidden = $('next').hidden = $('hoy').hidden = todo;
     $('hoy').disabled = vista.salto === 0;
 
-    const t = H.totales(estado, p.desde, p.hasta, ahora);
+    const t = H.totales(ev, p.desde, p.hasta, ahora);
     const filas = Object.entries(t.porProyecto)
       .map(([id, ms]) => ({ p: proyecto(id), ms }))
       .filter((f) => f.p)
-      .sort((a, b) => b.ms - a.ms);
-    const importe = filas.reduce((s, f) => s + (f.p.tarifa ? f.p.tarifa * f.ms / H.HORA : 0), 0);
+      .sort((a, b) => b.ms - a.ms)
+      .map((f) => ({ nombre: f.p.nombre, color: f.p.color, tarifa: f.p.tarifa, ms: f.ms }));
+    const importe = filas.reduce((s, f) => s + (f.tarifa ? f.tarifa * f.ms / H.HORA : 0), 0);
+    const grupo = REMOTO && vista.quien === 'grupo';
     let diasTrab = 0;
-    if (!todo && vista.tipo !== 'dia') diasTrab = H.totalesPorDia(estado, p.desde, Math.min(p.hasta, H.sumarDias(H.inicioDia(ahora), 1)), ahora).filter((d) => d.total > 0).length;
+    if (!todo && vista.tipo !== 'dia' && !grupo) diasTrab = H.totalesPorDia(ev, p.desde, Math.min(p.hasta, H.sumarDias(H.inicioDia(ahora), 1)), ahora).filter((d) => d.total > 0).length;
+    const porPersona = grupo ? H.totalesPor(ev, p.desde, p.hasta, ahora, 'persona').por : {};
+    const nPersonas = Object.keys(porPersona).length;
     $('big').innerHTML = `
       <div><div class="v">${H.formatDuracion(t.total)}</div><div class="k">${H.horasDecimales(t.total)} h en total</div></div>
       ${diasTrab ? `<div><div class="v">${H.formatDuracion(t.total / diasTrab)}</div><div class="k">media por día trabajado (${diasTrab})</div></div>` : ''}
+      ${grupo && nPersonas ? `<div><div class="v">${nPersonas}</div><div class="k">${nPersonas === 1 ? 'persona' : 'personas'} con horas</div></div>` : ''}
       ${importe ? `<div><div class="v">${eur.format(importe)}</div><div class="k">importe según tarifas</div></div>` : ''}`;
 
-    const max = filas.length ? filas[0].ms : 1;
-    $('bars').innerHTML = filas.length ? filas.map((f) => `
-      <div class="bar">
-        <span class="n"><span class="dot" style="background:${esc(f.p.color)}"></span><span title="${esc(f.p.nombre)}">${esc(f.p.nombre)}</span></span>
-        <span class="t"><i style="width:${(f.ms / max * 100).toFixed(1)}%;background:${esc(f.p.color)}"></i></span>
-        <span class="v">${H.formatDuracion(f.ms)} <small>${Math.round(f.ms / t.total * 100)} %${f.p.tarifa ? ' · ' + eur.format(f.p.tarifa * f.ms / H.HORA) : ''}</small></span>
-      </div>`).join('') : '<div class="muted">Sin horas en este periodo.</div>';
+    $('bars').innerHTML = filas.length
+      ? (grupo ? '<h4>Por proyecto</h4>' : '') + barras(filas, t.total, true)
+      : `<div class="muted">${cargando ? 'Cargando…' : 'Sin horas en este periodo.'}</div>`;
+    $('barsPersona').hidden = !grupo || !nPersonas;
+    if (grupo && nPersonas) {
+      const fp = Object.entries(porPersona).sort((a, b) => b[1] - a[1])
+        .map(([email, ms]) => ({ nombre: H.nombrePersona(email), titulo: email, color: 'var(--accent)', ms }));
+      $('barsPersona').innerHTML = '<h4>Por persona</h4>' + barras(fp, t.total, false);
+    }
 
     // Gráfico diario apilado para semana y mes.
     if (vista.tipo === 'semana' || vista.tipo === 'mes') {
-      const dias = H.totalesPorDia(estado, p.desde, p.hasta, ahora);
+      const dias = H.totalesPorDia(ev, p.desde, p.hasta, ahora);
       const tope = Math.max(H.HORA * 8, ...dias.map((d) => d.total));
       const hoy = H.inicioDia(ahora);
       const semana = vista.tipo === 'semana';
@@ -552,6 +654,7 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
   $('prev').onclick = () => { vista.salto--; renderSummary(); renderEntries(); };
   $('next').onclick = () => { vista.salto++; renderSummary(); renderEntries(); };
   $('hoy').onclick = () => { vista.salto = 0; renderSummary(); renderEntries(); };
+  $('quien').onchange = () => { vista.quien = $('quien').value; renderSummary(); renderEntries(); };
 
   // ---------- registros ----------
   function renderEntries() {
@@ -562,11 +665,12 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
     f.innerHTML = '<option value="">Todos los proyectos</option>' +
       estado.proyectos.map((x) => `<option value="${esc(x.id)}">${esc(x.nombre)}</option>`).join('');
     f.value = estado.proyectos.some((x) => x.id === filtro) ? filtro : '';
-    $('btnAdd').disabled = !estado.proyectos.length;
+    $('btnAdd').disabled = cargando || !estado.proyectos.length;
+    const verPersona = REMOTO && vista.quien === 'grupo';
 
-    const lista = H.registrosEnPeriodo(estado, p.desde, p.hasta, ahora, f.value);
+    const lista = H.registrosEnPeriodo(estadoVista(), p.desde, p.hasta, ahora, f.value);
     if (!lista.length) {
-      $('entries').innerHTML = `<div class="muted">${estado.proyectos.length ? 'No hay registros en este periodo.' : 'Crea un proyecto y pulsa Iniciar para empezar a contar.'}</div>`;
+      $('entries').innerHTML = `<div class="muted">${cargando ? 'Cargando…' : estado.proyectos.length ? 'No hay registros en este periodo.' : 'Crea un proyecto y pulsa Iniciar para empezar a contar.'}</div>`;
       return;
     }
     const grupos = new Map();
@@ -582,11 +686,12 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
       for (const r of rs) {
         const pr = proyecto(r.proyectoId) || { nombre: '?', color: '#888' };
         const otroDia = H.inicioDia(r.fin - 1) !== d ? ' (+1)' : '';
+        const quien = verPersona && r.persona ? `<span class="muted"> · ${esc(H.nombrePersona(r.persona))}</span>` : '';
         html += `<li class="${r.activo ? 'live' : ''}">
           <span class="dot" style="background:${esc(pr.color)}"></span>
-          <span class="what"><b>${esc(pr.nombre)}</b>${r.nota ? `<small>${esc(r.nota)}</small>` : ''}</span>
+          <span class="what"><b>${esc(pr.nombre)}</b>${quien}${r.nota ? `<small>${esc(r.nota)}</small>` : ''}</span>
           <span class="when"><b>${H.formatDuracion(r.fin - r.inicio)}</b>${H.isoHora(new Date(r.inicio))}–${r.activo ? 'ahora' : H.isoHora(new Date(r.fin)) + otroDia}</span>
-          <span class="acts">${r.activo ? '' : `<button class="icon" data-ed="${esc(r.id)}" aria-label="Editar registro" title="Editar">✎</button><button class="icon" data-del="${esc(r.id)}" aria-label="Borrar registro" title="Borrar">✕</button>`}</span>
+          <span class="acts">${r.activo || !puedeEditarRegistro(r) ? '' : `<button class="icon" data-ed="${esc(r.id)}" aria-label="Editar registro" title="Editar">✎</button><button class="icon" data-del="${esc(r.id)}" aria-label="Borrar registro" title="Borrar">✕</button>`}</span>
         </li>`;
       }
       html += '</ul></div>';
@@ -599,7 +704,10 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
     const ed = e.target.closest('[data-ed]');
     if (ed) return abrirRegistro(ed.dataset.ed);
     const del = e.target.closest('[data-del]');
-    if (del && confirm('¿Borrar este registro?')) aplicar(H.borrarRegistro(estado, del.dataset.del));
+    if (del && confirm('¿Borrar este registro?')) {
+      const id = del.dataset.del;
+      ejecutar('borrarRegistro', { id }, () => H.borrarRegistro(estado, id));
+    }
   };
 
   let editandoRegistro = null;
@@ -640,8 +748,15 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
         fin = H.aMs($('eDia').value, $('eFin').value);
         if (fin <= inicio) fin = H.aMs(H.isoDia(new Date(H.sumarDias(inicio, 1))), $('eFin').value);
       }
-      const datos = { proyectoId: $('eProyecto').value, inicio, fin, nota: $('eNota').value };
-      aplicar(editandoRegistro ? H.editarRegistro(estado, editandoRegistro, datos) : H.agregarRegistro(estado, datos));
+      const datos = { proyectoId: $('eProyecto').value, inicio, fin, nota: $('eNota').value.trim() };
+      const id = editandoRegistro;
+      if (id) {
+        ejecutar('editarRegistro', { id, cambios: datos }, () => H.editarRegistro(estado, id, datos));
+      } else {
+        datos.id = H.nuevoId();
+        if (REMOTO) datos.persona = sesion.yo;
+        ejecutar('agregarRegistro', { datos }, () => H.agregarRegistro(estado, datos));
+      }
     }, $('eErr'));
     if (!ok) e.preventDefault();
   });
@@ -657,7 +772,7 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
   $('btnCSV').onclick = () => {
     const p = periodoActual();
     const sufijo = vista.tipo === 'todo' ? 'todo' : H.isoDia(new Date(p.desde));
-    descargar(`horas-${vista.tipo}-${sufijo}.csv`, H.aCSV(estado, p.desde, p.hasta, Date.now()), 'text/csv;charset=utf-8');
+    descargar(`horas-${vista.tipo}-${sufijo}.csv`, H.aCSV(estadoVista(), p.desde, p.hasta, Date.now()), 'text/csv;charset=utf-8');
   };
   $('btnBackup').onclick = () => descargar(`horas-copia-${H.isoDia(new Date())}.json`, JSON.stringify(estado, null, 1), 'application/json');
   $('btnRestore').onclick = () => $('fileRestore').click();
@@ -668,7 +783,9 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
     try {
       const nuevo = H.normalizarEstado(JSON.parse(await file.text()));
       if (!confirm(`La copia tiene ${nuevo.proyectos.length} proyectos y ${nuevo.registros.length} registros. Sustituirá los datos actuales (${estado.proyectos.length} proyectos, ${estado.registros.length} registros). ¿Continuar?`)) return;
-      aplicar(nuevo);
+      estado = nuevo;
+      guardarLocal();
+      render();
       toast('Copia restaurada');
     } catch (e) {
       toast(e instanceof SyntaxError ? 'El archivo no es un JSON válido' : e.message);
@@ -676,10 +793,26 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
   };
 
   // ---------- arranque ----------
-  function render() { renderTimer(); renderProjects(); renderSummary(); renderEntries(); }
+  function renderCabecera() {
+    if (!REMOTO) return;
+    $('btnBackup').hidden = $('btnRestore').hidden = true;
+    $('subtitulo').textContent = cargando ? 'Conectando…'
+      : `${H.nombrePersona(sesion.yo)} (${sesion.yo})${sesion.admin ? ' · administrador' : ''} · datos compartidos del grupo`;
+    $('lnkHoja').hidden = !sesion.hojaUrl;
+    if (sesion.hojaUrl) $('lnkHoja').href = sesion.hojaUrl;
+  }
+  function render() { renderCabecera(); renderTimer(); renderProjects(); renderSummary(); renderEntries(); }
 
-  // Otra pestaña con la app abierta ha cambiado los datos.
-  window.addEventListener('storage', (e) => { if (e.key === CLAVE) { estado = cargar(); render(); } });
+  if (REMOTO) {
+    llamar('estado').then(recibir, (e) => { cargando = false; aviso('No se ha podido conectar: ' + e.message); render(); });
+    // Trae lo que hayan cambiado otros (u otro ordenador) al volver a la pestaña y cada 2 min.
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refrescar(); });
+    setInterval(refrescar, 2 * 60 * 1000);
+  } else {
+    // Otra pestaña con la app abierta ha cambiado los datos.
+    window.addEventListener('storage', (e) => { if (e.key === CLAVE) { estado = cargarLocal(); render(); } });
+    guardarLocal();
+  }
 
   let ultimoMinuto = -1;
   setInterval(() => {
@@ -689,7 +822,6 @@ dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
     if (m !== ultimoMinuto) { ultimoMinuto = m; renderProjects(); renderSummary(); if (estado.activo) renderEntries(); }
   }, 1000);
 
-  guardar();
   render();
 })();
 </script>

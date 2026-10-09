@@ -11,13 +11,26 @@ const apps = [
   { html: 'app/horas.html', motor: 'src/horas.js', salida: 'dist/horas.html' },
 ];
 
-fs.mkdirSync(path.join(raiz, 'dist'), { recursive: true });
-for (const app of apps) {
+function empaquetar(app) {
   const html = fs.readFileSync(path.join(raiz, app.html), 'utf8');
   const motor = fs.readFileSync(path.join(raiz, app.motor), 'utf8');
   const etiqueta = `<script src="../${app.motor}"></script>`;
   if (!html.includes(etiqueta)) throw new Error(`No se encuentra la etiqueta del motor en ${app.html}`);
-  const cuerpo = html.replace(etiqueta, () => `<script>\n${motor}\n</script>`);
-  fs.writeFileSync(path.join(raiz, app.salida), cabecera + cuerpo + '\n</html>\n');
+  return cabecera + html.replace(etiqueta, () => `<script>\n${motor}\n</script>`) + '\n</html>\n';
+}
+
+fs.mkdirSync(path.join(raiz, 'dist'), { recursive: true });
+for (const app of apps) {
+  fs.writeFileSync(path.join(raiz, app.salida), empaquetar(app));
   console.log(`${app.salida} generado`);
 }
+
+// Versión compartida del contador de horas: los cuatro archivos del proyecto de
+// Google Apps Script, listos para copiar al editor (ver docs/horas-compartido.md).
+const gas = path.join(raiz, 'dist/apps-script');
+fs.mkdirSync(gas, { recursive: true });
+fs.copyFileSync(path.join(raiz, 'gas/Codigo.gs'), path.join(gas, 'Codigo.gs'));
+fs.copyFileSync(path.join(raiz, 'gas/appsscript.json'), path.join(gas, 'appsscript.json'));
+fs.copyFileSync(path.join(raiz, 'src/horas.js'), path.join(gas, 'Horas.gs'));
+fs.writeFileSync(path.join(gas, 'Index.html'), empaquetar(apps[1]));
+console.log('dist/apps-script/ generado');
