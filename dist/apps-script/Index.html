@@ -1,0 +1,1154 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Horas por Proyecto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: barra de cronómetro arriba (lo que se usa a diario), y debajo dos columnas —
+   proyectos a la izquierda, resumen del periodo y registros a la derecha.
+   Mismo lenguaje visual que el Rugosímetro: cabeceras azul catálogo, cifras en mono. */
+:root {
+  --bg: #eef1f5;
+  --panel: #ffffff;
+  --ink: #15233a;
+  --muted: #5a6a7f;
+  --line: #d3dae4;
+  --field: #f7f9fb;
+  --head-bg: #123f73;
+  --head-ink: #ffffff;
+  --accent: #123f73;
+  --run: #1d7a4b;
+  --run-bg: #e3f3ea;
+  --bad: #b3261e;
+  --bad-bg: #fbe7e5;
+  --track: #e4e9f0;
+  --font-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --font-body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d141e; --panel: #151f2c; --ink: #e4eaf2; --muted: #93a2b6; --line: #2a3747;
+    --field: #101924; --head-bg: #1c3b63; --head-ink: #eef4fb; --accent: #7fb0ec;
+    --run: #6fd29b; --run-bg: #13301f; --bad: #ff8a80; --bad-bg: #3a1714; --track: #223041;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d141e; --panel: #151f2c; --ink: #e4eaf2; --muted: #93a2b6; --line: #2a3747;
+  --field: #101924; --head-bg: #1c3b63; --head-ink: #eef4fb; --accent: #7fb0ec;
+  --run: #6fd29b; --run-bg: #13301f; --bad: #ff8a80; --bad-bg: #3a1714; --track: #223041;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.45 var(--font-body);
+  padding-inline: 16px; padding-block: 0 40px;
+}
+h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; }
+.wrap { max-width: 1240px; margin: 0 auto; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+[hidden] { display: none !important; }
+
+header.top {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px;
+  padding-block: 22px 16px; border-bottom: 2px solid var(--head-bg); margin-bottom: 18px;
+}
+header.top h1 { font-size: 30px; font-weight: 700; letter-spacing: .01em; font-style: italic; color: var(--accent); }
+header.top p { margin: 0; color: var(--muted); }
+
+.grid { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; min-width: 0; }
+.card > h2 {
+  background: var(--head-bg); color: var(--head-ink); font-size: 17px; font-weight: 600;
+  letter-spacing: .04em; text-transform: uppercase; padding: 8px 14px;
+  display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.card > h2 small { font-family: var(--font-body); text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 13px; opacity: .85; }
+.body { padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+a.btn, button.btn {
+  font: 600 14px var(--font-body); border-radius: 4px; padding: 7px 12px; cursor: pointer;
+  border: 1px solid var(--accent); background: transparent; color: var(--accent);
+}
+button.btn.primary { background: var(--head-bg); border-color: var(--head-bg); color: var(--head-ink); }
+button.btn.small { padding: 4px 9px; font-size: 13px; }
+button.btn.danger { border-color: var(--bad); color: var(--bad); }
+button.btn:hover, a.btn:hover { filter: brightness(1.08); }
+a.btn { text-decoration: none; display: inline-block; }
+button:disabled { opacity: .5; cursor: default; }
+button.icon {
+  border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 4px 6px; border-radius: 4px;
+  font: 600 14px var(--font-body); line-height: 1;
+}
+button.icon:hover { color: var(--accent); background: var(--field); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.f { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.f label { font-size: 13px; color: var(--muted); }
+.f input, .f select {
+  border: 1px solid var(--line); border-radius: 4px; background: var(--field); color: var(--ink);
+  font: 500 14px var(--font-body); padding: 7px 8px; width: 100%; min-width: 0;
+}
+.f input[type="color"] { padding: 2px; height: 36px; }
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px 12px; }
+.f.wide { grid-column: 1 / -1; }
+
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; }
+
+/* ---------- cronómetro ---------- */
+.timer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto auto; gap: 12px; align-items: end; padding: 14px; }
+.timer .clock { font: 500 34px/1 var(--font-mono); font-variant-numeric: tabular-nums; min-width: 6.2ch; text-align: right; }
+.timer.running { box-shadow: inset 4px 0 0 var(--run); }
+.timer.running .clock { color: var(--run); }
+#btnTimer { font-size: 16px; padding: 10px 22px; min-width: 120px; }
+#btnTimer.stop { background: var(--bad); border-color: var(--bad); color: var(--panel); }
+@media (max-width: 720px) {
+  .timer { grid-template-columns: minmax(0, 1fr) auto; }
+  .timer .f { grid-column: 1 / -1; }
+  .timer .clock { text-align: left; font-size: 30px; }
+}
+
+/* ---------- proyectos ---------- */
+.plist { list-style: none; margin: 0; padding: 0; }
+.plist li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; gap: 4px 10px; align-items: center; padding: 8px 14px; border-top: 1px solid var(--line); }
+.plist li:first-child { border-top: 0; }
+.plist li.on { background: var(--run-bg); }
+.plist li.arch { opacity: .6; }
+.plist .name { min-width: 0; }
+.plist .name b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plist .name small { color: var(--muted); font-size: 12px; }
+.plist .num { font: 500 13px var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; min-width: 4.5ch; }
+.plist .num span { display: block; font: 11px var(--font-body); color: var(--muted); }
+.play { width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid var(--run); background: transparent; color: var(--run); cursor: pointer; display: grid; place-items: center; padding: 0; }
+.play.on { background: var(--bad); border-color: var(--bad); color: var(--panel); }
+.play svg { width: 12px; height: 12px; }
+.empty { padding: 18px 14px; color: var(--muted); text-align: center; }
+.addp { border-top: 1px solid var(--line); padding: 12px 14px; display: flex; gap: 8px; }
+.addp input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 4px; background: var(--field); color: var(--ink); font: 14px var(--font-body); padding: 7px 8px; }
+.plist-foot { padding: 0 14px 12px; font-size: 13px; }
+.plist-foot label { color: var(--muted); cursor: pointer; }
+
+/* ---------- resumen ---------- */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.seg button { border: 0; background: var(--field); color: var(--ink); padding: 6px 11px; font: 14px var(--font-body); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--head-bg); color: var(--head-ink); }
+.nav { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.nav .lbl { font: 600 18px var(--font-display); min-width: 12ch; text-align: center; }
+.big { display: flex; gap: 22px; flex-wrap: wrap; align-items: baseline; }
+.big .v { font: 500 34px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.big .k { font-size: 13px; color: var(--muted); }
+
+.bars { display: flex; flex-direction: column; gap: 9px; }
+.bar { display: grid; grid-template-columns: minmax(0, 160px) minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.bar .n { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.bar .n span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar .t { height: 12px; background: var(--track); border-radius: 3px; overflow: hidden; }
+.bar .t i { display: block; height: 100%; border-radius: 3px; }
+.bar .v { font: 500 13px var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.bar .v small { color: var(--muted); font-size: 12px; }
+@media (max-width: 520px) { .bar { grid-template-columns: minmax(0, 1fr) auto; } .bar .t { grid-column: 1 / -1; grid-row: 2; } }
+
+.days { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; align-items: end; height: 130px; padding-top: 16px; }
+.day { display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative; min-width: 0; }
+.day .stack { display: flex; flex-direction: column-reverse; border-radius: 2px 2px 0 0; overflow: hidden; }
+.day .stack i { display: block; }
+.day.today .stack { outline: 1.5px solid var(--accent); outline-offset: 1px; }
+.day .h { position: absolute; top: -16px; left: 0; right: 0; text-align: center; font: 10px var(--font-mono); color: var(--muted); white-space: nowrap; }
+.dlbl { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; border-top: 1px solid var(--line); padding-top: 3px; }
+.dlbl span { text-align: center; font: 11px var(--font-body); color: var(--muted); overflow: hidden; white-space: nowrap; }
+
+/* ---------- registros ---------- */
+.bars h4 { margin: 6px 0 0; font: 600 14px var(--font-display); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.dayhead { display: flex; justify-content: space-between; font: 600 15px var(--font-display); letter-spacing: .03em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); padding: 4px 0; }
+.entries { list-style: none; margin: 0 0 6px; padding: 0; }
+.entries li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 2px 10px; align-items: center; padding: 7px 0; border-bottom: 1px dashed var(--line); }
+.entries li.live { background: var(--run-bg); }
+.entries .what { min-width: 0; }
+.entries .what b { font-weight: 600; }
+.entries .what small { display: block; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.entries .when { font: 13px var(--font-mono); color: var(--muted); text-align: right; white-space: nowrap; }
+.entries .when b { display: block; color: var(--ink); font-weight: 500; font-size: 14px; }
+.entries .acts { display: flex; gap: 0; }
+
+dialog { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--ink); padding: 0; width: min(460px, calc(100vw - 32px)); }
+dialog::backdrop { background: rgb(0 0 0 / .45); }
+dialog h3 { background: var(--head-bg); color: var(--head-ink); font-size: 17px; letter-spacing: .04em; text-transform: uppercase; padding: 8px 14px; }
+dialog form { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.err { color: var(--bad); background: var(--bad-bg); padding: 6px 10px; border-radius: 4px; font-size: 14px; }
+.hint { font-size: 12px; color: var(--muted); }
+.banner { background: var(--bad-bg); color: var(--bad); padding: 8px 12px; border-radius: 4px; margin-bottom: 14px; }
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 4px; font-size: 14px; z-index: 10; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Horas por proyecto</h1>
+      <p id="subtitulo">Cronómetro y registro de horas. Los datos se guardan en este navegador.</p>
+    </div>
+    <div class="row">
+      <button class="btn small" id="btnCSV" title="Registros del periodo seleccionado, para Excel">Exportar CSV</button>
+      <a class="btn small" id="lnkHoja" target="_blank" rel="noopener" hidden>Abrir hoja de datos</a>
+      <button class="btn small" id="btnBackup" title="Descarga todos los datos en JSON">Copia de seguridad</button>
+      <button class="btn small" id="btnRestore" title="Carga una copia de seguridad JSON">Restaurar…</button>
+      <input type="file" id="fileRestore" accept=".json,application/json" hidden>
+    </div>
+  </header>
+
+  <div class="banner" id="aviso" role="alert" hidden></div>
+  <div class="banner" id="noStorage" hidden>Este navegador no permite guardar datos: lo que registres se perderá al cerrar la página. Usa «Copia de seguridad» para no perderlo.</div>
+
+  <section class="card" style="margin-bottom:18px">
+    <div class="timer" id="timer">
+      <div class="f">
+        <label for="tProyecto">Proyecto</label>
+        <select id="tProyecto"></select>
+      </div>
+      <div class="f">
+        <label for="tNota">¿En qué estás trabajando?</label>
+        <input id="tNota" placeholder="Nota opcional" maxlength="200">
+      </div>
+      <div class="clock" id="clock" aria-live="off">0:00:00</div>
+      <button class="btn primary" id="btnTimer">Iniciar</button>
+    </div>
+  </section>
+
+  <div class="grid">
+    <div class="col">
+      <section class="card">
+        <h2>Proyectos <small id="pCount"></small></h2>
+        <ul class="plist" id="plist"></ul>
+        <form class="addp" id="addp">
+          <input id="newName" placeholder="Nuevo proyecto" maxlength="80" aria-label="Nombre del nuevo proyecto">
+          <button class="btn primary small" type="submit">Añadir</button>
+        </form>
+        <div class="plist-foot"><label><input type="checkbox" id="showArch"> Mostrar archivados</label></div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="card">
+        <h2>Resumen
+          <span class="seg" id="seg" role="group" aria-label="Periodo">
+            <button data-p="dia">Día</button><button data-p="semana">Semana</button><button data-p="mes">Mes</button><button data-p="anio">Año</button><button data-p="todo">Todo</button>
+          </span>
+        </h2>
+        <div class="body">
+          <div class="nav" id="nav">
+            <button class="btn small" id="prev" aria-label="Periodo anterior">◀</button>
+            <span class="lbl" id="plabel"></span>
+            <button class="btn small" id="next" aria-label="Periodo siguiente">▶</button>
+            <button class="btn small" id="hoy">Hoy</button>
+            <select id="quien" aria-label="De quién son las horas" hidden style="margin-left:auto;font:14px var(--font-body);padding:5px 6px;border-radius:4px;border:1px solid var(--line);background:var(--field);color:var(--ink)"></select>
+          </div>
+          <div class="big" id="big"></div>
+          <div id="chart"></div>
+          <div class="bars" id="bars"></div>
+          <div class="bars" id="barsPersona" hidden></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Registros
+          <span class="row">
+            <select id="fProyecto" aria-label="Filtrar por proyecto" style="font:13px var(--font-body);padding:3px 4px;border-radius:4px;border:0"></select>
+            <button class="btn small" id="btnAdd" style="background:var(--head-ink);color:var(--head-bg);border-color:var(--head-ink)">+ Añadir</button>
+          </span>
+        </h2>
+        <div class="body" id="entries"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<dialog id="dlgEntry">
+  <h3 id="deTitle">Registro</h3>
+  <form method="dialog" id="feEntry">
+    <div class="fields">
+      <div class="f wide"><label for="eProyecto">Proyecto</label><select id="eProyecto" required></select></div>
+      <div class="f"><label for="eDia">Fecha</label><input type="date" id="eDia" required></div>
+      <div class="f"><label for="eIni">Inicio</label><input type="time" id="eIni" required></div>
+      <div class="f"><label for="eFin">Fin</label><input type="time" id="eFin"></div>
+      <div class="f"><label for="eDur">o duración</label><input id="eDur" placeholder="1:30 · 1,5 · 45m" inputmode="decimal"></div>
+      <div class="f wide"><label for="eNota">Nota</label><input id="eNota" maxlength="200"></div>
+    </div>
+    <div class="hint">Si el fin es anterior al inicio se entiende que acaba al día siguiente. Si rellenas la duración, se calcula el fin.</div>
+    <div class="err" id="eErr" hidden></div>
+    <div class="row" style="justify-content:flex-end">
+      <button class="btn" value="cancel" formnovalidate>Cancelar</button>
+      <button class="btn primary" id="eOk" value="ok">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgProj">
+  <h3>Proyecto</h3>
+  <form method="dialog" id="fpProj">
+    <div class="fields">
+      <div class="f wide"><label for="pNombre">Nombre</label><input id="pNombre" required maxlength="80"></div>
+      <div class="f wide"><label for="pCliente">Cliente</label><input id="pCliente" maxlength="80"></div>
+      <div class="f"><label for="pTarifa">Tarifa (€/h)</label><input id="pTarifa" type="number" min="0" step="0.01" inputmode="decimal"></div>
+      <div class="f"><label for="pColor">Color</label><input id="pColor" type="color"></div>
+      <div class="f wide"><label><input type="checkbox" id="pArch"> Archivado (no aparece en el cronómetro)</label></div>
+    </div>
+    <div class="err" id="pErr" hidden></div>
+    <div class="row" style="justify-content:space-between">
+      <button class="btn danger" id="pDel" value="del" formnovalidate>Borrar proyecto</button>
+      <span class="row">
+        <button class="btn" value="cancel" formnovalidate>Cancelar</button>
+        <button class="btn primary" value="ok">Guardar</button>
+      </span>
+    </div>
+  </form>
+</dialog>
+
+<script>
+/*
+ * Motor del contador de horas por proyecto.
+ *
+ * Estado (se guarda tal cual en el navegador y en las copias JSON):
+ *   proyectos: [{ id, nombre, cliente, color, tarifa, archivado, creadoPor? }]
+ *   registros: [{ id, proyectoId, inicio, fin, nota, persona? }]   (inicio/fin en ms epoch)
+ *   activo:    { proyectoId, inicio, nota } | null                  (cronómetro en marcha)
+ *
+ * `persona` y `creadoPor` (correos) solo existen en la versión compartida
+ * (Google Apps Script); en la versión local se omiten.
+ *
+ * Los totales de un periodo cuentan solo la parte de cada registro que cae
+ * dentro del periodo, así un registro que cruza medianoche se reparte bien.
+ * Todas las fechas se interpretan en la hora local del navegador.
+ */
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.Horas = api;
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const VERSION = 1;
+  const MIN = 60 * 1000;
+  const HORA = 60 * MIN;
+  const COLORES = ['#1d5fa8', '#c4580e', '#1d7a4b', '#8a3ab9', '#b3261e', '#0f7c8c', '#9a5c00', '#4b5a6e'];
+
+  function estadoVacio() {
+    return { version: VERSION, proyectos: [], registros: [], activo: null };
+  }
+
+  function nuevoId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  // ---------- Duraciones ----------
+
+  // ms → "h:mm" (las horas pueden pasar de 24).
+  function formatDuracion(ms, conSegundos) {
+    const neg = ms < 0;
+    let s = Math.floor(Math.abs(ms) / 1000);
+    if (!conSegundos) s = Math.round(s / 60) * 60;
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const seg = s % 60;
+    const base = `${h}:${String(m).padStart(2, '0')}`;
+    return (neg ? '-' : '') + (conSegundos ? `${base}:${String(seg).padStart(2, '0')}` : base);
+  }
+
+  // ms → horas decimales con coma, p. ej. "1,50".
+  function horasDecimales(ms, decimales = 2) {
+    return (ms / HORA).toFixed(decimales).replace('.', ',');
+  }
+
+  // Acepta "1:30", "1,5", "1.5", "2h", "45m", "1h 30m", "1h30". Devuelve ms o null.
+  function parseDuracion(texto) {
+    const t = String(texto || '').trim().toLowerCase().replace(/\s+/g, '');
+    if (!t) return null;
+    let m;
+    if ((m = t.match(/^(\d+):([0-5]?\d)$/))) return (+m[1] * 60 + +m[2]) * MIN;
+    if ((m = t.match(/^(\d+(?:[.,]\d+)?)h?$/))) return Math.round(parseFloat(m[1].replace(',', '.')) * 60) * MIN;
+    if ((m = t.match(/^(\d+)m(?:in)?$/))) return +m[1] * MIN;
+    if ((m = t.match(/^(\d+)h(\d+)m?(?:in)?$/))) return (+m[1] * 60 + +m[2]) * MIN;
+    return null;
+  }
+
+  // ---------- Fechas (hora local) ----------
+
+  const pad = (n) => String(n).padStart(2, '0');
+  const isoDia = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const isoHora = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+  // "2026-10-09" + "08:30" → ms; hora vacía = 00:00.
+  function aMs(dia, hora) {
+    const [y, mo, d] = String(dia).split('-').map(Number);
+    const [h, mi] = String(hora || '0:0').split(':').map(Number);
+    const r = new Date(y, mo - 1, d, h || 0, mi || 0).getTime();
+    return Number.isFinite(r) ? r : null;
+  }
+
+  function inicioDia(ms) {
+    const d = new Date(ms);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  }
+
+  function sumarDias(ms, n) {
+    const d = new Date(ms);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n).getTime();
+  }
+
+  // Periodo que contiene `ms`, desplazado `salto` periodos. Semana de lunes a domingo.
+  // Devuelve { desde, hasta } con hasta exclusivo.
+  function periodo(tipo, ms, salto = 0) {
+    const d = new Date(ms);
+    const y = d.getFullYear(), mo = d.getMonth();
+    switch (tipo) {
+      case 'dia': {
+        const desde = sumarDias(inicioDia(ms), salto);
+        return { desde, hasta: sumarDias(desde, 1) };
+      }
+      case 'semana': {
+        const lunes = sumarDias(inicioDia(ms), -((d.getDay() + 6) % 7) + 7 * salto);
+        return { desde: lunes, hasta: sumarDias(lunes, 7) };
+      }
+      case 'mes':
+        return { desde: new Date(y, mo + salto, 1).getTime(), hasta: new Date(y, mo + salto + 1, 1).getTime() };
+      case 'anio':
+        return { desde: new Date(y + salto, 0, 1).getTime(), hasta: new Date(y + salto + 1, 0, 1).getTime() };
+      case 'todo':
+        return { desde: -Infinity, hasta: Infinity };
+      default:
+        throw new Error(`Periodo desconocido: ${tipo}`);
+    }
+  }
+
+  // ---------- Registros ----------
+
+  // Registros cerrados más el cronómetro en marcha (con fin = ahora).
+  function registrosConActivo(estado, ahora) {
+    const lista = estado.registros.slice();
+    if (estado.activo) {
+      const r = { id: 'activo', proyectoId: estado.activo.proyectoId, inicio: estado.activo.inicio,
+        fin: Math.max(ahora, estado.activo.inicio), nota: estado.activo.nota || '', activo: true };
+      if (estado.activo.persona) r.persona = estado.activo.persona;
+      lista.push(r);
+    }
+    return lista;
+  }
+
+  function solape(r, desde, hasta) {
+    return Math.max(0, Math.min(r.fin, hasta) - Math.max(r.inicio, desde));
+  }
+
+  // { [proyectoId]: ms } y total dentro de [desde, hasta).
+  function totales(estado, desde, hasta, ahora) {
+    const t = totalesPor(estado, desde, hasta, ahora, 'proyectoId');
+    return { porProyecto: t.por, total: t.total };
+  }
+
+  // Igual que totales, agrupando por cualquier campo del registro (p. ej. 'persona').
+  function totalesPor(estado, desde, hasta, ahora, campo) {
+    const por = {};
+    let total = 0;
+    for (const r of registrosConActivo(estado, ahora)) {
+      const t = solape(r, desde, hasta);
+      if (!t) continue;
+      const k = r[campo] || '';
+      por[k] = (por[k] || 0) + t;
+      total += t;
+    }
+    return { por, total };
+  }
+
+  // Totales por día natural: [{ dia: ms inicio del día, total, porProyecto }].
+  function totalesPorDia(estado, desde, hasta, ahora) {
+    const dias = [];
+    for (let d = desde; d < hasta; d = sumarDias(d, 1)) {
+      const t = totales(estado, d, sumarDias(d, 1), ahora);
+      dias.push({ dia: d, total: t.total, porProyecto: t.porProyecto });
+    }
+    return dias;
+  }
+
+  // Registros que tocan el periodo, más recientes primero.
+  function registrosEnPeriodo(estado, desde, hasta, ahora, proyectoId) {
+    return registrosConActivo(estado, ahora)
+      .filter((r) => r.fin > desde && r.inicio < hasta && (!proyectoId || r.proyectoId === proyectoId))
+      .sort((a, b) => b.inicio - a.inicio);
+  }
+
+  // ---------- Operaciones (devuelven un estado nuevo, no mutan) ----------
+
+  function crearProyecto(estado, datos) {
+    const nombre = String(datos.nombre || '').trim();
+    if (!nombre) throw new Error('El proyecto necesita un nombre');
+    if (estado.proyectos.some((p) => p.nombre.toLowerCase() === nombre.toLowerCase())) {
+      throw new Error(`Ya existe un proyecto llamado «${nombre}»`);
+    }
+    const p = {
+      id: datos.id || nuevoId(), nombre, cliente: String(datos.cliente || '').trim(),
+      color: datos.color || COLORES[estado.proyectos.length % COLORES.length],
+      tarifa: Number(datos.tarifa) > 0 ? Number(datos.tarifa) : 0, archivado: false,
+    };
+    if (datos.creadoPor) p.creadoPor = datos.creadoPor;
+    return { estado: { ...estado, proyectos: [...estado.proyectos, p] }, proyecto: p };
+  }
+
+  function editarProyecto(estado, id, cambios) {
+    const c = { ...cambios };
+    if ('nombre' in c) {
+      c.nombre = String(c.nombre).trim();
+      if (!c.nombre) throw new Error('El proyecto necesita un nombre');
+      if (estado.proyectos.some((p) => p.id !== id && p.nombre.toLowerCase() === c.nombre.toLowerCase())) {
+        throw new Error(`Ya existe un proyecto llamado «${c.nombre}»`);
+      }
+    }
+    if ('tarifa' in c) c.tarifa = Number(c.tarifa) > 0 ? Number(c.tarifa) : 0;
+    return { ...estado, proyectos: estado.proyectos.map((p) => (p.id === id ? { ...p, ...c } : p)) };
+  }
+
+  // Borra el proyecto y todas sus horas.
+  function borrarProyecto(estado, id) {
+    return {
+      ...estado,
+      proyectos: estado.proyectos.filter((p) => p.id !== id),
+      registros: estado.registros.filter((r) => r.proyectoId !== id),
+      activo: estado.activo && estado.activo.proyectoId === id ? null : estado.activo,
+    };
+  }
+
+  // Para el cronómetro (si lo hay) y guarda su registro. Menos de 1 minuto se descarta.
+  function parar(estado, ahora) {
+    if (!estado.activo) return estado;
+    const a = estado.activo;
+    const fin = Math.max(ahora, a.inicio);
+    const registros = fin - a.inicio >= MIN
+      ? [...estado.registros, { id: nuevoId(), proyectoId: a.proyectoId, inicio: a.inicio, fin, nota: a.nota || '' }]
+      : estado.registros;
+    return { ...estado, registros, activo: null };
+  }
+
+  // Arranca el cronómetro en un proyecto; si había otro en marcha lo cierra primero.
+  function iniciar(estado, proyectoId, ahora, nota) {
+    if (!estado.proyectos.some((p) => p.id === proyectoId)) throw new Error('Proyecto inexistente');
+    const s = parar(estado, ahora);
+    return { ...s, activo: { proyectoId, inicio: ahora, nota: nota || '' } };
+  }
+
+  function validarRegistro(estado, r) {
+    if (!estado.proyectos.some((p) => p.id === r.proyectoId)) throw new Error('Elige un proyecto');
+    if (!Number.isFinite(r.inicio) || !Number.isFinite(r.fin)) throw new Error('Fecha u hora no válida');
+    if (r.fin <= r.inicio) throw new Error('El fin debe ser posterior al inicio');
+    if (r.fin - r.inicio > 7 * 24 * HORA) throw new Error('Un registro no puede durar más de una semana');
+  }
+
+  function agregarRegistro(estado, datos) {
+    const r = { id: datos.id || nuevoId(), proyectoId: datos.proyectoId, inicio: datos.inicio, fin: datos.fin, nota: String(datos.nota || '').trim() };
+    if (datos.persona) r.persona = datos.persona;
+    validarRegistro(estado, r);
+    return { ...estado, registros: [...estado.registros, r] };
+  }
+
+  function editarRegistro(estado, id, cambios) {
+    const actual = estado.registros.find((r) => r.id === id);
+    if (!actual) throw new Error('Registro inexistente');
+    const r = { ...actual, ...cambios, nota: String((cambios.nota ?? actual.nota) || '').trim() };
+    validarRegistro(estado, r);
+    return { ...estado, registros: estado.registros.map((x) => (x.id === id ? r : x)) };
+  }
+
+  function borrarRegistro(estado, id) {
+    return { ...estado, registros: estado.registros.filter((r) => r.id !== id) };
+  }
+
+  // ---------- Importar / exportar ----------
+
+  // Comprueba y limpia un estado cargado de JSON (copia de seguridad o localStorage).
+  function normalizarEstado(obj) {
+    if (!obj || typeof obj !== 'object' || !Array.isArray(obj.proyectos) || !Array.isArray(obj.registros)) {
+      throw new Error('El archivo no es una copia de seguridad del contador de horas');
+    }
+    const proyectos = obj.proyectos
+      .filter((p) => p && p.id && String(p.nombre || '').trim())
+      .map((p, i) => {
+        const q = {
+          id: String(p.id), nombre: String(p.nombre).trim(), cliente: String(p.cliente || '').trim(),
+          color: /^#[0-9a-f]{6}$/i.test(p.color) ? p.color : COLORES[i % COLORES.length],
+          tarifa: Number(p.tarifa) > 0 ? Number(p.tarifa) : 0, archivado: !!p.archivado,
+        };
+        if (p.creadoPor) q.creadoPor = String(p.creadoPor);
+        return q;
+      });
+    const ids = new Set(proyectos.map((p) => p.id));
+    const registros = obj.registros
+      .filter((r) => r && ids.has(String(r.proyectoId)) && Number.isFinite(+r.inicio) && Number.isFinite(+r.fin) && +r.fin > +r.inicio)
+      .map((r) => {
+        const q = { id: String(r.id || nuevoId()), proyectoId: String(r.proyectoId), inicio: +r.inicio, fin: +r.fin, nota: String(r.nota || '') };
+        if (r.persona) q.persona = String(r.persona);
+        return q;
+      });
+    const a = obj.activo;
+    const activo = a && ids.has(String(a.proyectoId)) && Number.isFinite(+a.inicio)
+      ? { proyectoId: String(a.proyectoId), inicio: +a.inicio, nota: String(a.nota || '') }
+      : null;
+    return { version: VERSION, proyectos, registros, activo };
+  }
+
+  // "ana.garcia@empresa.com" → "Ana Garcia".
+  function nombrePersona(email) {
+    return String(email || '').split('@')[0].split(/[._-]+/).filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || '?';
+  }
+
+  // CSV con separador ";" y coma decimal (se abre directamente en Excel en español).
+  // Si los registros llevan persona se añade la columna.
+  function aCSV(estado, desde, hasta, ahora) {
+    const nombre = Object.fromEntries(estado.proyectos.map((p) => [p.id, p]));
+    const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const lista = registrosEnPeriodo(estado, desde, hasta, ahora).sort((a, b) => a.inicio - b.inicio);
+    const conPersona = lista.some((r) => r.persona);
+    const filas = [['Fecha', ...(conPersona ? ['Persona'] : []), 'Proyecto', 'Cliente', 'Inicio', 'Fin', 'Horas', 'Duración', 'Nota']];
+    for (const r of lista) {
+      const p = nombre[r.proyectoId] || { nombre: '?', cliente: '' };
+      const ini = new Date(r.inicio), fin = new Date(r.fin);
+      const dur = r.fin - r.inicio;
+      filas.push([isoDia(ini), ...(conPersona ? [r.persona || ''] : []), p.nombre, p.cliente, isoHora(ini), isoHora(fin), horasDecimales(dur), formatDuracion(dur), r.nota]);
+    }
+    return '﻿' + filas.map((f) => f.map(q).join(';')).join('\r\n') + '\r\n';
+  }
+
+  return {
+    VERSION, MIN, HORA, COLORES,
+    estadoVacio, nuevoId, formatDuracion, horasDecimales, parseDuracion,
+    isoDia, isoHora, aMs, inicioDia, sumarDias, periodo,
+    registrosConActivo, totales, totalesPor, totalesPorDia, registrosEnPeriodo,
+    crearProyecto, editarProyecto, borrarProyecto, iniciar, parar,
+    agregarRegistro, editarRegistro, borrarRegistro, normalizarEstado, nombrePersona, aCSV,
+  };
+});
+
+</script>
+<script>
+(function () {
+  'use strict';
+  const H = window.Horas;
+  const CLAVE = 'contador-horas-v1';
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const eur = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
+  const fDia = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const fMes = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' });
+  const fCorto = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' });
+  const fSem = new Intl.DateTimeFormat('es-ES', { weekday: 'short' });
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const ICON_PLAY = '<svg viewBox="0 0 12 12"><path d="M2 1l9 5-9 5z" fill="currentColor"/></svg>';
+  const ICON_STOP = '<svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" rx="1" fill="currentColor"/></svg>';
+
+  // Dos modos con la misma interfaz:
+  //  - local: archivo abierto en el navegador, datos en localStorage.
+  //  - compartido: servida por Google Apps Script; los datos viven en la hoja de cálculo.
+  //    Cada acción se aplica al momento en pantalla (validada con el mismo motor) y se
+  //    envía al servidor, cuya respuesta es la verdad.
+  const REMOTO = typeof google !== 'undefined' && google.script && google.script.run;
+  let sesion = { yo: '', admin: false, verGrupo: false, crearProyectos: true, hojaUrl: '' };
+  let cargando = !!REMOTO;
+  let pendientes = 0;
+
+  // ---------- preferencias y almacenamiento local ----------
+  let guardable = true;
+  const pref = {
+    get(k, d) { try { return localStorage.getItem(CLAVE + ':' + k) ?? d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(CLAVE + ':' + k, v); } catch (e) { /* sin almacenamiento */ } },
+  };
+  function cargarLocal() {
+    try {
+      const txt = localStorage.getItem(CLAVE);
+      return txt ? H.normalizarEstado(JSON.parse(txt)) : H.estadoVacio();
+    } catch (e) {
+      // Datos ilegibles: se apartan para no perderlos al guardar encima.
+      try { localStorage.setItem(CLAVE + ':ilegible', localStorage.getItem(CLAVE)); } catch (e2) { guardable = false; }
+      return H.estadoVacio();
+    }
+  }
+  function guardarLocal() {
+    if (REMOTO) return;
+    try { localStorage.setItem(CLAVE, JSON.stringify(estado)); } catch (e) { guardable = false; }
+    $('noStorage').hidden = guardable;
+  }
+
+  let estado = REMOTO ? H.estadoVacio() : cargarLocal();
+  let vista = { tipo: pref.get('periodo', 'semana'), salto: 0, filtro: '', quien: 'yo' };
+
+  // ---------- servidor ----------
+  function llamar(op, args) {
+    return new Promise((ok, mal) => {
+      google.script.run.withSuccessHandler(ok).withFailureHandler((e) => mal(e instanceof Error ? e : new Error(String(e && e.message || e)))).api(op, args);
+    });
+  }
+  function recibir(r) {
+    sesion = r.sesion;
+    estado = H.normalizarEstado(r.estado);
+    cargando = false;
+    aviso('');
+    render();
+  }
+  function refrescar() {
+    if (!REMOTO || pendientes || document.querySelector('dialog[open]')) return;
+    llamar('estado').then((r) => { if (!pendientes) recibir(r); }, (e) => aviso(e.message));
+  }
+  function aviso(msg) { $('aviso').textContent = msg; $('aviso').hidden = !msg; }
+
+  // Aplica `local()` (lanza si no es válido) y, en modo compartido, manda la operación.
+  function ejecutar(op, args, local) {
+    const nuevo = local();
+    // Los tramos creados aquí (p. ej. al parar) son míos hasta que responda el servidor.
+    if (REMOTO) nuevo.registros = nuevo.registros.map((r) => (r.persona ? r : { ...r, persona: sesion.yo }));
+    estado = nuevo;
+    guardarLocal();
+    render();
+    if (!REMOTO) return;
+    pendientes++;
+    llamar(op, args).then(
+      (r) => { pendientes--; if (!pendientes) recibir(r); },
+      (e) => { pendientes--; toast(e.message); refrescar(); },
+    );
+  }
+  function intentar(fn, errEl) {
+    try { fn(); if (errEl) errEl.hidden = true; return true; } catch (e) {
+      if (errEl) { errEl.textContent = e.message; errEl.hidden = false; } else toast(e.message);
+      return false;
+    }
+  }
+  function toast(msg) {
+    const t = document.createElement('div');
+    t.className = 'toast'; t.textContent = msg; t.setAttribute('role', 'status');
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3200);
+  }
+
+  const proyecto = (id) => estado.proyectos.find((p) => p.id === id);
+  const activos = () => estado.proyectos.filter((p) => !p.archivado);
+  const puedeEditarProyecto = (p) => !REMOTO || sesion.admin || (p.creadoPor && p.creadoPor === sesion.yo);
+  const puedeEditarRegistro = (r) => !REMOTO || sesion.admin || r.persona === sesion.yo;
+
+  // Mis horas (lista de proyectos y cronómetro) y las de la vista elegida (resumen y registros).
+  function estadoDe(quien) {
+    if (!REMOTO) return estado;
+    // El cronómetro en marcha es siempre el mío (los de los demás no se envían).
+    const activo = estado.activo && { ...estado.activo, persona: sesion.yo };
+    if (quien === 'grupo') return { ...estado, activo };
+    const email = quien === 'yo' ? sesion.yo : quien;
+    return { ...estado, registros: estado.registros.filter((r) => r.persona === email), activo: email === sesion.yo ? activo : null };
+  }
+  const estadoMio = () => estadoDe('yo');
+  const estadoVista = () => estadoDe(vista.quien);
+
+  // ---------- cronómetro ----------
+  function renderTimer() {
+    const sel = $('tProyecto');
+    const actual = estado.activo ? estado.activo.proyectoId : (sel.value || pref.get('ultimo', ''));
+    const lista = activos();
+    if (estado.activo && !lista.some((p) => p.id === estado.activo.proyectoId) && proyecto(estado.activo.proyectoId)) lista.push(proyecto(estado.activo.proyectoId));
+    sel.innerHTML = lista.length
+      ? lista.map((p) => `<option value="${esc(p.id)}">${esc(p.nombre)}${p.cliente ? ' · ' + esc(p.cliente) : ''}</option>`).join('')
+      : `<option value="">${cargando ? 'Cargando…' : 'Crea un proyecto primero'}</option>`;
+    if (lista.some((p) => p.id === actual)) sel.value = actual;
+    sel.disabled = !lista.length;
+    const on = !!estado.activo;
+    $('timer').classList.toggle('running', on);
+    const b = $('btnTimer');
+    b.textContent = on ? 'Parar' : 'Iniciar';
+    b.classList.toggle('stop', on);
+    b.disabled = cargando || (!on && !lista.length);
+    if (on && document.activeElement !== $('tNota')) $('tNota').value = estado.activo.nota;
+    tick();
+  }
+  function tick() {
+    const ms = estado.activo ? Math.max(0, Date.now() - estado.activo.inicio) : 0;
+    $('clock').textContent = H.formatDuracion(ms, true);
+    document.title = estado.activo ? `${H.formatDuracion(ms)} · ${proyecto(estado.activo.proyectoId)?.nombre || ''}` : 'Horas por Proyecto';
+  }
+  function toggleTimer(proyectoId) {
+    const ahora = Date.now();
+    if (estado.activo && (!proyectoId || estado.activo.proyectoId === proyectoId)) {
+      ejecutar('parar', { cuando: ahora }, () => H.parar(estado, ahora));
+      $('tNota').value = '';
+      return;
+    }
+    const id = proyectoId || $('tProyecto').value;
+    if (!id) return;
+    pref.set('ultimo', id);
+    const nota = proyectoId && proyectoId !== $('tProyecto').value ? '' : $('tNota').value.trim();
+    intentar(() => ejecutar('iniciar', { proyectoId: id, nota, cuando: ahora }, () => H.iniciar(estado, id, ahora, nota)));
+  }
+  $('btnTimer').onclick = () => toggleTimer();
+  $('tProyecto').onchange = () => {
+    pref.set('ultimo', $('tProyecto').value);
+    // Cambiar de proyecto con el cronómetro en marcha = cerrar el tramo y seguir en el nuevo.
+    if (estado.activo && $('tProyecto').value !== estado.activo.proyectoId) toggleTimer($('tProyecto').value);
+  };
+  $('tNota').addEventListener('change', () => {
+    if (!estado.activo) return;
+    const nota = $('tNota').value.trim();
+    ejecutar('notaActivo', { nota }, () => ({ ...estado, activo: { ...estado.activo, nota } }));
+  });
+  $('tNota').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !estado.activo) toggleTimer(); });
+
+  // ---------- proyectos ----------
+  function renderProjects() {
+    const ahora = Date.now();
+    const mio = estadoMio();
+    const dia = H.periodo('dia', ahora), sem = H.periodo('semana', ahora);
+    const tDia = H.totales(mio, dia.desde, dia.hasta, ahora).porProyecto;
+    const tSem = H.totales(mio, sem.desde, sem.hasta, ahora).porProyecto;
+    const verArch = $('showArch').checked;
+    const lista = estado.proyectos.filter((p) => verArch || !p.archivado);
+    const nArch = estado.proyectos.filter((p) => p.archivado).length;
+    $('pCount').textContent = `${activos().length} activos${nArch ? ` · ${nArch} archivados` : ''}`;
+    $('addp').hidden = REMOTO && !sesion.crearProyectos;
+    $('plist').innerHTML = lista.length ? lista.map((p) => {
+      const on = estado.activo && estado.activo.proyectoId === p.id;
+      return `<li class="${on ? 'on' : ''} ${p.archivado ? 'arch' : ''}">
+        <span class="dot" style="background:${esc(p.color)}"></span>
+        <span class="name"><b>${esc(p.nombre)}</b>${p.cliente || p.tarifa ? `<small>${esc(p.cliente)}${p.cliente && p.tarifa ? ' · ' : ''}${p.tarifa ? eur.format(p.tarifa) + '/h' : ''}</small>` : ''}</span>
+        <span class="num">${H.formatDuracion(tDia[p.id] || 0)}<span>${REMOTO ? 'mis h hoy' : 'hoy'}</span></span>
+        <span class="num">${H.formatDuracion(tSem[p.id] || 0)}<span>semana</span></span>
+        <span class="row" style="gap:2px;flex-wrap:nowrap">
+          ${p.archivado ? '' : `<button class="play ${on ? 'on' : ''}" data-play="${esc(p.id)}" aria-label="${on ? 'Parar' : 'Iniciar'} ${esc(p.nombre)}" title="${on ? 'Parar' : 'Iniciar'}">${on ? ICON_STOP : ICON_PLAY}</button>`}
+          ${puedeEditarProyecto(p) ? `<button class="icon" data-edit="${esc(p.id)}" aria-label="Editar ${esc(p.nombre)}" title="Editar">✎</button>` : '<span style="width:26px"></span>'}
+        </span>
+      </li>`;
+    }).join('') : `<li class="empty" style="display:block">${cargando ? 'Cargando…' : REMOTO && !sesion.crearProyectos ? 'Aún no hay proyectos. Pide a un administrador que los cree.' : 'Aún no hay proyectos. Añade el primero aquí abajo.'}</li>`;
+  }
+  $('plist').onclick = (e) => {
+    const play = e.target.closest('[data-play]');
+    if (play) return toggleTimer(play.dataset.play);
+    const ed = e.target.closest('[data-edit]');
+    if (ed) abrirProyecto(ed.dataset.edit);
+  };
+  $('addp').onsubmit = (e) => {
+    e.preventDefault();
+    intentar(() => {
+      const datos = { id: H.nuevoId(), nombre: $('newName').value.trim() };
+      if (REMOTO) datos.creadoPor = sesion.yo;
+      ejecutar('crearProyecto', { datos }, () => H.crearProyecto(estado, datos).estado);
+      pref.set('ultimo', datos.id);
+      $('newName').value = '';
+      $('tProyecto').value = '';
+      renderTimer();
+    });
+  };
+  $('showArch').onchange = renderProjects;
+
+  let editandoProyecto = null;
+  function abrirProyecto(id) {
+    const p = proyecto(id);
+    editandoProyecto = id;
+    $('pNombre').value = p.nombre; $('pCliente').value = p.cliente; $('pTarifa').value = p.tarifa || '';
+    $('pColor').value = p.color; $('pArch').checked = p.archivado; $('pErr').hidden = true;
+    $('pDel').hidden = REMOTO && !sesion.admin;
+    $('dlgProj').showModal();
+  }
+  $('fpProj').addEventListener('submit', (e) => {
+    const accion = e.submitter && e.submitter.value;
+    const id = editandoProyecto;
+    if (accion === 'del') {
+      const p = proyecto(id);
+      const n = estado.registros.filter((r) => r.proyectoId === p.id).length;
+      const quien = REMOTO ? ' de todo el grupo' : '';
+      if (!confirm(`¿Borrar «${p.nombre}» y sus ${n} registros${quien}? No se puede deshacer.`)) { e.preventDefault(); return; }
+      ejecutar('borrarProyecto', { id }, () => H.borrarProyecto(estado, id));
+      return;
+    }
+    if (accion !== 'ok') return;
+    const ok = intentar(() => {
+      const cambios = {
+        nombre: $('pNombre').value, cliente: $('pCliente').value.trim(), tarifa: $('pTarifa').value,
+        color: $('pColor').value, archivado: $('pArch').checked,
+      };
+      ejecutar('editarProyecto', { id, cambios }, () => H.editarProyecto(estado, id, cambios));
+      if (cambios.archivado && estado.activo && estado.activo.proyectoId === id) toggleTimer();
+    }, $('pErr'));
+    if (!ok) e.preventDefault();
+  });
+
+  // ---------- resumen ----------
+  function etiquetaPeriodo(tipo, p) {
+    switch (tipo) {
+      case 'dia': return cap(fDia.format(p.desde));
+      case 'semana': return `${fCorto.format(p.desde)} – ${fCorto.format(H.sumarDias(p.hasta, -1))} ${new Date(p.desde).getFullYear()}`;
+      case 'mes': return cap(fMes.format(p.desde));
+      case 'anio': return String(new Date(p.desde).getFullYear());
+      default: return 'Todo el historial';
+    }
+  }
+  function periodoActual() { return H.periodo(vista.tipo, Date.now(), vista.salto); }
+
+  function renderQuien() {
+    const sel = $('quien');
+    sel.hidden = !REMOTO || !sesion.verGrupo;
+    if (sel.hidden) { vista.quien = 'yo'; return; }
+    const personas = [...new Set(estado.registros.map((r) => r.persona).filter((x) => x && x !== sesion.yo))]
+      .sort((a, b) => H.nombrePersona(a).localeCompare(H.nombrePersona(b), 'es'));
+    if (vista.quien !== 'yo' && vista.quien !== 'grupo' && !personas.includes(vista.quien)) vista.quien = 'yo';
+    sel.innerHTML = '<option value="yo">Mis horas</option><option value="grupo">Todo el grupo</option>' +
+      (personas.length ? `<optgroup label="Persona">${personas.map((p) => `<option value="${esc(p)}">${esc(H.nombrePersona(p))}</option>`).join('')}</optgroup>` : '');
+    sel.value = vista.quien;
+  }
+
+  function barras(filas, total, conImporte) {
+    const max = filas.length ? filas[0].ms : 1;
+    return filas.map((f) => `
+      <div class="bar">
+        <span class="n"><span class="dot" style="background:${esc(f.color)}"></span><span title="${esc(f.titulo || f.nombre)}">${esc(f.nombre)}</span></span>
+        <span class="t"><i style="width:${(f.ms / max * 100).toFixed(1)}%;background:${esc(f.color)}"></i></span>
+        <span class="v">${H.formatDuracion(f.ms)} <small>${Math.round(f.ms / total * 100)} %${conImporte && f.tarifa ? ' · ' + eur.format(f.tarifa * f.ms / H.HORA) : ''}</small></span>
+      </div>`).join('');
+  }
+
+  function renderSummary() {
+    const ahora = Date.now();
+    const p = periodoActual();
+    const ev = estadoVista();
+    renderQuien();
+    document.querySelectorAll('#seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.p === vista.tipo)));
+    $('plabel').textContent = etiquetaPeriodo(vista.tipo, p);
+    const todo = vista.tipo === 'todo';
+    $('prev').hidden = $('next').hidden = $('hoy').hidden = todo;
+    $('hoy').disabled = vista.salto === 0;
+
+    const t = H.totales(ev, p.desde, p.hasta, ahora);
+    const filas = Object.entries(t.porProyecto)
+      .map(([id, ms]) => ({ p: proyecto(id), ms }))
+      .filter((f) => f.p)
+      .sort((a, b) => b.ms - a.ms)
+      .map((f) => ({ nombre: f.p.nombre, color: f.p.color, tarifa: f.p.tarifa, ms: f.ms }));
+    const importe = filas.reduce((s, f) => s + (f.tarifa ? f.tarifa * f.ms / H.HORA : 0), 0);
+    const grupo = REMOTO && vista.quien === 'grupo';
+    let diasTrab = 0;
+    if (!todo && vista.tipo !== 'dia' && !grupo) diasTrab = H.totalesPorDia(ev, p.desde, Math.min(p.hasta, H.sumarDias(H.inicioDia(ahora), 1)), ahora).filter((d) => d.total > 0).length;
+    const porPersona = grupo ? H.totalesPor(ev, p.desde, p.hasta, ahora, 'persona').por : {};
+    const nPersonas = Object.keys(porPersona).length;
+    $('big').innerHTML = `
+      <div><div class="v">${H.formatDuracion(t.total)}</div><div class="k">${H.horasDecimales(t.total)} h en total</div></div>
+      ${diasTrab ? `<div><div class="v">${H.formatDuracion(t.total / diasTrab)}</div><div class="k">media por día trabajado (${diasTrab})</div></div>` : ''}
+      ${grupo && nPersonas ? `<div><div class="v">${nPersonas}</div><div class="k">${nPersonas === 1 ? 'persona' : 'personas'} con horas</div></div>` : ''}
+      ${importe ? `<div><div class="v">${eur.format(importe)}</div><div class="k">importe según tarifas</div></div>` : ''}`;
+
+    $('bars').innerHTML = filas.length
+      ? (grupo ? '<h4>Por proyecto</h4>' : '') + barras(filas, t.total, true)
+      : `<div class="muted">${cargando ? 'Cargando…' : 'Sin horas en este periodo.'}</div>`;
+    $('barsPersona').hidden = !grupo || !nPersonas;
+    if (grupo && nPersonas) {
+      const fp = Object.entries(porPersona).sort((a, b) => b[1] - a[1])
+        .map(([email, ms]) => ({ nombre: H.nombrePersona(email), titulo: email, color: 'var(--accent)', ms }));
+      $('barsPersona').innerHTML = '<h4>Por persona</h4>' + barras(fp, t.total, false);
+    }
+
+    // Gráfico diario apilado para semana y mes.
+    if (vista.tipo === 'semana' || vista.tipo === 'mes') {
+      const dias = H.totalesPorDia(ev, p.desde, p.hasta, ahora);
+      const tope = Math.max(H.HORA * 8, ...dias.map((d) => d.total));
+      const hoy = H.inicioDia(ahora);
+      const semana = vista.tipo === 'semana';
+      $('chart').innerHTML = `<div class="days">${dias.map((d) => `
+          <div class="day ${d.dia === hoy ? 'today' : ''}" title="${esc(fCorto.format(d.dia))}: ${H.formatDuracion(d.total)}">
+            ${d.total && (semana || d.total >= H.HORA) ? `<span class="h">${semana ? H.formatDuracion(d.total) : Math.round(d.total / H.HORA)}</span>` : ''}
+            <div class="stack" style="height:${(d.total / tope * 100).toFixed(1)}%">${Object.entries(d.porProyecto).map(([id, ms]) =>
+              `<i style="height:${(ms / d.total * 100).toFixed(1)}%;background:${esc(proyecto(id)?.color || '#888')}"></i>`).join('')}</div>
+          </div>`).join('')}</div>
+        <div class="dlbl">${dias.map((d) => `<span>${semana ? fSem.format(d.dia) : new Date(d.dia).getDate()}</span>`).join('')}</div>`;
+    } else {
+      $('chart').innerHTML = '';
+    }
+  }
+  $('seg').onclick = (e) => {
+    const b = e.target.closest('[data-p]');
+    if (!b) return;
+    vista.tipo = b.dataset.p; vista.salto = 0; pref.set('periodo', vista.tipo);
+    renderSummary(); renderEntries();
+  };
+  $('prev').onclick = () => { vista.salto--; renderSummary(); renderEntries(); };
+  $('next').onclick = () => { vista.salto++; renderSummary(); renderEntries(); };
+  $('hoy').onclick = () => { vista.salto = 0; renderSummary(); renderEntries(); };
+  $('quien').onchange = () => { vista.quien = $('quien').value; renderSummary(); renderEntries(); };
+
+  // ---------- registros ----------
+  function renderEntries() {
+    const ahora = Date.now();
+    const p = periodoActual();
+    const f = $('fProyecto');
+    const filtro = vista.filtro;
+    f.innerHTML = '<option value="">Todos los proyectos</option>' +
+      estado.proyectos.map((x) => `<option value="${esc(x.id)}">${esc(x.nombre)}</option>`).join('');
+    f.value = estado.proyectos.some((x) => x.id === filtro) ? filtro : '';
+    $('btnAdd').disabled = cargando || !estado.proyectos.length;
+    const verPersona = REMOTO && vista.quien === 'grupo';
+
+    const lista = H.registrosEnPeriodo(estadoVista(), p.desde, p.hasta, ahora, f.value);
+    if (!lista.length) {
+      $('entries').innerHTML = `<div class="muted">${cargando ? 'Cargando…' : estado.proyectos.length ? 'No hay registros en este periodo.' : 'Crea un proyecto y pulsa Iniciar para empezar a contar.'}</div>`;
+      return;
+    }
+    const grupos = new Map();
+    for (const r of lista.slice(0, 500)) {
+      const d = H.inicioDia(r.inicio);
+      if (!grupos.has(d)) grupos.set(d, []);
+      grupos.get(d).push(r);
+    }
+    let html = '';
+    for (const [d, rs] of grupos) {
+      const total = rs.reduce((s, r) => s + (r.fin - r.inicio), 0);
+      html += `<div><div class="dayhead"><span>${esc(cap(fDia.format(d)))}</span><span class="mono">${H.formatDuracion(total)}</span></div><ul class="entries">`;
+      for (const r of rs) {
+        const pr = proyecto(r.proyectoId) || { nombre: '?', color: '#888' };
+        const otroDia = H.inicioDia(r.fin - 1) !== d ? ' (+1)' : '';
+        const quien = verPersona && r.persona ? `<span class="muted"> · ${esc(H.nombrePersona(r.persona))}</span>` : '';
+        html += `<li class="${r.activo ? 'live' : ''}">
+          <span class="dot" style="background:${esc(pr.color)}"></span>
+          <span class="what"><b>${esc(pr.nombre)}</b>${quien}${r.nota ? `<small>${esc(r.nota)}</small>` : ''}</span>
+          <span class="when"><b>${H.formatDuracion(r.fin - r.inicio)}</b>${H.isoHora(new Date(r.inicio))}–${r.activo ? 'ahora' : H.isoHora(new Date(r.fin)) + otroDia}</span>
+          <span class="acts">${r.activo || !puedeEditarRegistro(r) ? '' : `<button class="icon" data-ed="${esc(r.id)}" aria-label="Editar registro" title="Editar">✎</button><button class="icon" data-del="${esc(r.id)}" aria-label="Borrar registro" title="Borrar">✕</button>`}</span>
+        </li>`;
+      }
+      html += '</ul></div>';
+    }
+    if (lista.length > 500) html += `<div class="muted">Se muestran los 500 más recientes de ${lista.length}. Exporta a CSV para verlos todos.</div>`;
+    $('entries').innerHTML = html;
+  }
+  $('fProyecto').onchange = () => { vista.filtro = $('fProyecto').value; renderEntries(); };
+  $('entries').onclick = (e) => {
+    const ed = e.target.closest('[data-ed]');
+    if (ed) return abrirRegistro(ed.dataset.ed);
+    const del = e.target.closest('[data-del]');
+    if (del && confirm('¿Borrar este registro?')) {
+      const id = del.dataset.del;
+      ejecutar('borrarRegistro', { id }, () => H.borrarRegistro(estado, id));
+    }
+  };
+
+  let editandoRegistro = null;
+  function abrirRegistro(id) {
+    editandoRegistro = id || null;
+    const r = id ? estado.registros.find((x) => x.id === id) : null;
+    $('deTitle').textContent = r ? 'Editar registro' : 'Añadir registro';
+    $('eProyecto').innerHTML = estado.proyectos.filter((p) => !p.archivado || (r && r.proyectoId === p.id))
+      .map((p) => `<option value="${esc(p.id)}">${esc(p.nombre)}</option>`).join('');
+    const ahora = new Date();
+    if (r) {
+      $('eProyecto').value = r.proyectoId;
+      $('eDia').value = H.isoDia(new Date(r.inicio));
+      $('eIni').value = H.isoHora(new Date(r.inicio));
+      $('eFin').value = H.isoHora(new Date(r.fin));
+      $('eNota').value = r.nota;
+    } else {
+      $('eProyecto').value = vista.filtro || $('tProyecto').value || '';
+      $('eDia').value = H.isoDia(ahora);
+      $('eIni').value = ''; $('eFin').value = H.isoHora(ahora); $('eNota').value = '';
+    }
+    $('eDur').value = ''; $('eErr').hidden = true;
+    $('dlgEntry').showModal();
+  }
+  $('btnAdd').onclick = () => abrirRegistro(null);
+  $('feEntry').addEventListener('submit', (e) => {
+    if (!e.submitter || e.submitter.value !== 'ok') return;
+    const ok = intentar(() => {
+      const inicio = H.aMs($('eDia').value, $('eIni').value);
+      if (inicio == null || !$('eDia').value || !$('eIni').value) throw new Error('Indica fecha y hora de inicio');
+      let fin;
+      if ($('eDur').value.trim()) {
+        const d = H.parseDuracion($('eDur').value);
+        if (!d) throw new Error('Duración no válida. Ejemplos: 1:30, 1,5, 2h, 45m');
+        fin = inicio + d;
+      } else {
+        if (!$('eFin').value) throw new Error('Indica la hora de fin o la duración');
+        fin = H.aMs($('eDia').value, $('eFin').value);
+        if (fin <= inicio) fin = H.aMs(H.isoDia(new Date(H.sumarDias(inicio, 1))), $('eFin').value);
+      }
+      const datos = { proyectoId: $('eProyecto').value, inicio, fin, nota: $('eNota').value.trim() };
+      const id = editandoRegistro;
+      if (id) {
+        ejecutar('editarRegistro', { id, cambios: datos }, () => H.editarRegistro(estado, id, datos));
+      } else {
+        datos.id = H.nuevoId();
+        if (REMOTO) datos.persona = sesion.yo;
+        ejecutar('agregarRegistro', { datos }, () => H.agregarRegistro(estado, datos));
+      }
+    }, $('eErr'));
+    if (!ok) e.preventDefault();
+  });
+
+  // ---------- exportar / importar ----------
+  function descargar(nombre, contenido, tipo) {
+    const url = URL.createObjectURL(new Blob([contenido], { type: tipo }));
+    const a = document.createElement('a');
+    a.href = url; a.download = nombre;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  $('btnCSV').onclick = () => {
+    const p = periodoActual();
+    const sufijo = vista.tipo === 'todo' ? 'todo' : H.isoDia(new Date(p.desde));
+    descargar(`horas-${vista.tipo}-${sufijo}.csv`, H.aCSV(estadoVista(), p.desde, p.hasta, Date.now()), 'text/csv;charset=utf-8');
+  };
+  $('btnBackup').onclick = () => descargar(`horas-copia-${H.isoDia(new Date())}.json`, JSON.stringify(estado, null, 1), 'application/json');
+  $('btnRestore').onclick = () => $('fileRestore').click();
+  $('fileRestore').onchange = async () => {
+    const file = $('fileRestore').files[0];
+    $('fileRestore').value = '';
+    if (!file) return;
+    try {
+      const nuevo = H.normalizarEstado(JSON.parse(await file.text()));
+      if (!confirm(`La copia tiene ${nuevo.proyectos.length} proyectos y ${nuevo.registros.length} registros. Sustituirá los datos actuales (${estado.proyectos.length} proyectos, ${estado.registros.length} registros). ¿Continuar?`)) return;
+      estado = nuevo;
+      guardarLocal();
+      render();
+      toast('Copia restaurada');
+    } catch (e) {
+      toast(e instanceof SyntaxError ? 'El archivo no es un JSON válido' : e.message);
+    }
+  };
+
+  // ---------- arranque ----------
+  function renderCabecera() {
+    if (!REMOTO) return;
+    $('btnBackup').hidden = $('btnRestore').hidden = true;
+    $('subtitulo').textContent = cargando ? 'Conectando…'
+      : `${H.nombrePersona(sesion.yo)} (${sesion.yo})${sesion.admin ? ' · administrador' : ''} · datos compartidos del grupo`;
+    $('lnkHoja').hidden = !sesion.hojaUrl;
+    if (sesion.hojaUrl) $('lnkHoja').href = sesion.hojaUrl;
+  }
+  function render() { renderCabecera(); renderTimer(); renderProjects(); renderSummary(); renderEntries(); }
+
+  if (REMOTO) {
+    llamar('estado').then(recibir, (e) => { cargando = false; aviso('No se ha podido conectar: ' + e.message); render(); });
+    // Trae lo que hayan cambiado otros (u otro ordenador) al volver a la pestaña y cada 2 min.
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refrescar(); });
+    setInterval(refrescar, 2 * 60 * 1000);
+  } else {
+    // Otra pestaña con la app abierta ha cambiado los datos.
+    window.addEventListener('storage', (e) => { if (e.key === CLAVE) { estado = cargarLocal(); render(); } });
+    guardarLocal();
+  }
+
+  let ultimoMinuto = -1;
+  setInterval(() => {
+    tick();
+    const m = Math.floor(Date.now() / H.MIN);
+    // Con el cronómetro en marcha los totales cambian cada minuto; a medianoche cambia "hoy".
+    if (m !== ultimoMinuto) { ultimoMinuto = m; renderProjects(); renderSummary(); if (estado.activo) renderEntries(); }
+  }, 1000);
+
+  render();
+})();
+</script>
+
+</html>
