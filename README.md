@@ -40,13 +40,28 @@ Abre `dist/rugosimetro.html` con doble clic en cualquier navegador (Chrome, Edge
 
 Es una estimación de ingeniería: sin calibrar, espera ±30–50 % frente a la medida real.
 
+## Contador de horas por proyecto
+
+Abre `dist/horas.html` con doble clic. También es un único archivo sin instalación.
+
+- **Cronómetro**: elige proyecto, escribe opcionalmente en qué estás y pulsa Iniciar. Sigue contando aunque cierres la pestaña o el navegador. Iniciar otro proyecto (o cambiarlo en el desplegable) cierra el tramo anterior automáticamente.
+- **Proyectos** con cliente, color, tarifa €/h y archivado. Cada uno muestra las horas de hoy y de la semana, con botón ▶ directo.
+- **Registros manuales** con hora de inicio y fin, o inicio y duración (`1:30`, `1,5`, `2h`, `45m`). Se pueden editar y borrar.
+- **Resumen** por día, semana (lunes–domingo), mes, año o todo el historial: total, media por día trabajado, importe según tarifas, reparto por proyecto y gráfico diario.
+- **Exportar CSV** del periodo (separador `;` y coma decimal, se abre directamente en Excel) y **copia de seguridad / restaurar** en JSON.
+
+Los datos se guardan en el navegador (`localStorage`) del equipo donde se usa: haz copias de seguridad de vez en cuando y úsalas para pasar los datos a otro equipo.
+
 ## Estructura
 
 ```
 src/rugosidad.js       motor de cálculo (navegador y Node)
 app/index.html         interfaz (carga el motor desde src/)
 dist/rugosimetro.html  versión de un solo archivo (generada)
-test/                  tests del motor contra fórmulas analíticas
+src/horas.js           motor del contador de horas
+app/horas.html         interfaz del contador de horas
+dist/horas.html        contador de horas en un solo archivo (generado)
+test/                  tests de los motores
 scripts/build.js       genera dist/
 ```
 
